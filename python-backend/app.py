@@ -44,58 +44,53 @@ def download_video():
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         app.logger.info("Iniciando download via pytube: %s", video_url)
 
-        yt = None
-        client_candidates = [
-            {"client": "ANDROID", "use_oauth": False, "allow_oauth_cache": False},
-            {"client": "IOS", "use_oauth": False, "allow_oauth_cache": False},
-            {"client": "WEB", "use_oauth": False, "allow_oauth_cache": False},
-        ]
-
-        last_error = None
-        for candidate in client_candidates:
-            try:
-                app.logger.info("Tentando inicializar pytube com client=%s", candidate["client"])
-                yt = YouTube(video_url, **candidate)
-                break
-            except VideoUnavailable:
-                return (
-                    jsonify(
-                        {
-                            "error": "Video indisponivel",
-                            "message": "O video esta bloqueado ou nao pode ser reproduzido.",
-                        }
-                    ),
-                    403,
-                )
-            except HTTPError as http_err:
-                last_error = http_err
-                app.logger.warning(
-                    "HTTPError com client %s: %s",
-                    candidate["client"],
-                    http_err,
-                )
-            except PytubeError as exc:
-                last_error = exc
-                app.logger.warning(
-                    "PytubeError com client %s: %s",
-                    candidate["client"],
-                    exc,
-                )
-
-        if yt is None:
-            if last_error:
-                raise last_error
+        try:
+            yt = YouTube(video_url, use_oauth=False, allow_oauth_cache=False)
+        except VideoUnavailable:
+            return (
+                jsonify(
+                    {
+                        "error": "Video indisponivel",
+                        "message": "O video esta bloqueado ou nao pode ser reproduzido.",
+                    }
+                ),
+                403,
+            )
+        except HTTPError as http_err:
+            app.logger.warning("HTTPError ao inicializar pytube (provavel restricao do video): %s", http_err)
             return jsonify(
-                {"error": "Erro pytube", "message": "Nao foi possivel inicializar pytube"}
-            ), 500
+                {
+                    "error": "HTTPError",
+                    "message": "YouTube retornou erro 400. Este video pode ter restricoes que impedem o download direto.",
+                }
+            ), 502
+        except PytubeError as exc:
+            app.logger.exception("Erro do pytube ao inicializar o video %s", video_id)
+            return jsonify({"error": "Erro pytube", "message": str(exc)}), 500
 
-        stream = (
-            yt.streams
-            .filter(progressive=True, file_extension="mp4")
-            .order_by("resolution")
-            .desc()
-            .first()
-        )
+        try:
+            stream = (
+                yt.streams
+                .filter(progressive=True, file_extension="mp4")
+                .order_by("resolution")
+                .desc()
+                .first()
+            )
+        except HTTPError as http_err:
+            app.logger.warning(
+                "HTTPError ao obter streams do video %s: %s", video_id, http_err
+            )
+            return jsonify(
+                {
+                    "error": "HTTPError",
+                    "message": "Nao foi possivel obter as streams do video. O YouTube retornou erro 400.",
+                }
+            ), 502
+        except PytubeError as exc:
+            app.logger.exception(
+                "Erro do pytube ao processar streams do video %s", video_id
+            )
+            return jsonify({"error": "Erro pytube", "message": str(exc)}), 500
 
         if stream is None:
             app.logger.warning(
