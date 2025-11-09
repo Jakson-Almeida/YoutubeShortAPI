@@ -44,21 +44,48 @@ def download_video():
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         app.logger.info("Iniciando download via pytube: %s", video_url)
 
-        try:
-            yt = YouTube(video_url, use_oauth=True, allow_oauth_cache=True)
-        except HTTPError as http_err:
-            # Alguns videos (especialmente Shorts) retornam 400 com o client padrao.
-            # Tentamos novamente sem OAuth.
-            app.logger.warning(
-                "Primeira chamada retornou HTTPError (%s). Tentando fallback sem OAuth.",
-                http_err,
-            )
-            yt = YouTube(
-                video_url,
-                use_oauth=False,
-                allow_oauth_cache=False,
-                client="ANDROID",
-            )
+        yt = None
+        client_candidates = [
+            {"client": "ANDROID", "use_oauth": False, "allow_oauth_cache": False},
+            {"client": "IOS", "use_oauth": False, "allow_oauth_cache": False},
+            {"client": "WEB", "use_oauth": False, "allow_oauth_cache": False},
+        ]
+
+        last_error = None
+        for candidate in client_candidates:
+            try:
+                app.logger.info("Tentando inicializar pytube com client=%s", candidate["client"])
+                yt = YouTube(video_url, **candidate)
+                break
+            except VideoUnavailable:
+                return (
+                    jsonify(
+                        {
+                            "error": "Video indisponivel",
+                            "message": "O video esta bloqueado ou nao pode ser reproduzido.",
+                        }
+                    ),
+                    403,
+                )
+            except HTTPError as http_err:
+                last_error = http_err
+                app.logger.warning(
+                    "HTTPError com client %s: %s",
+                    candidate["client"],
+                    http_err,
+                )
+            except PytubeError as exc:
+                last_error = exc
+                app.logger.warning(
+                    "PytubeError com client %s: %s",
+                    candidate["client"],
+                    exc,
+                )
+
+        if yt is None:
+            if last_error:
+                raise last_error
+            return jsonify({"error": "Erro pytube", "message": "Nao foi possivel inicializar pytube"}), 500
         except VideoUnavailable:
             return (
                 jsonify(
