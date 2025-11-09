@@ -19,7 +19,7 @@ Um website simples e moderno desenvolvido em React para pesquisar, visualizar e 
 
 1. **Clone o repositório**:
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/Jakson-Almeida/YoutubeShortAPI.git
 cd YoutubeShortAPI
 ```
 
