@@ -85,20 +85,9 @@ def download_video():
         if yt is None:
             if last_error:
                 raise last_error
-            return jsonify({"error": "Erro pytube", "message": "Nao foi possivel inicializar pytube"}), 500
-        except VideoUnavailable:
-            return (
-                jsonify(
-                    {
-                        "error": "Video indisponivel",
-                        "message": "O video esta bloqueado ou nao pode ser reproduzido.",
-                    }
-                ),
-                403,
-            )
-        except PytubeError as exc:
-            app.logger.exception("Erro do pytube ao inicializar o video %s", video_id)
-            return jsonify({"error": "Erro pytube", "message": str(exc)}), 500
+            return jsonify(
+                {"error": "Erro pytube", "message": "Nao foi possivel inicializar pytube"}
+            ), 500
 
         stream = (
             yt.streams
