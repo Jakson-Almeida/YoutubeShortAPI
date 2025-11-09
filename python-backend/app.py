@@ -41,55 +41,71 @@ def download_video():
         return jsonify({"error": "ID do video nao fornecido"}), 400
 
     try:
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        candidate_urls = [
+            f"https://www.youtube.com/watch?v={video_id}",
+            f"https://www.youtube.com/shorts/{video_id}",
+            f"https://youtu.be/{video_id}",
+        ]
+
+        yt = None
+        last_error = None
+
+        for candidate_url in candidate_urls:
+            app.logger.info("Tentando inicializar pytube com URL: %s", candidate_url)
+            try:
+                yt = YouTube(candidate_url, use_oauth=False, allow_oauth_cache=False)
+                video_url = candidate_url
+                break
+            except VideoUnavailable as exc:
+                last_error = exc
+                app.logger.warning("Video indisponivel para URL %s: %s", candidate_url, exc)
+            except HTTPError as http_err:
+                last_error = http_err
+                app.logger.warning("HTTPError ao inicializar pytube com URL %s: %s", candidate_url, http_err)
+            except PytubeError as exc:
+                last_error = exc
+                app.logger.warning("PytubeError ao inicializar pytube com URL %s: %s", candidate_url, exc)
+
+        if yt is None:
+            if isinstance(last_error, VideoUnavailable):
+                return jsonify({"error": "Video indisponivel", "message": "O video esta bloqueado ou nao pode ser reproduzido."}), 403
+            if isinstance(last_error, HTTPError):
+                return jsonify({"error": "HTTPError", "message": "YouTube retornou erro 400 ao tentar acessar o vídeo."}), 502
+            if last_error:
+                app.logger.exception("Falha ao inicializar pytube para o video %s", video_id)
+                return jsonify({"error": "Erro pytube", "message": str(last_error)}), 500
+            return jsonify({"error": "Erro pytube", "message": "Nao foi possivel inicializar pytube para este video"}), 500
+
+        video_url = candidate_url
         app.logger.info("Iniciando download via pytube: %s", video_url)
 
-        try:
-            yt = YouTube(video_url, use_oauth=False, allow_oauth_cache=False)
-        except VideoUnavailable:
+        def fetch_stream(target: YouTube):
             return (
-                jsonify(
-                    {
-                        "error": "Video indisponivel",
-                        "message": "O video esta bloqueado ou nao pode ser reproduzido.",
-                    }
-                ),
-                403,
-            )
-        except HTTPError as http_err:
-            app.logger.warning("HTTPError ao inicializar pytube (provavel restricao do video): %s", http_err)
-            return jsonify(
-                {
-                    "error": "HTTPError",
-                    "message": "YouTube retornou erro 400. Este video pode ter restricoes que impedem o download direto.",
-                }
-            ), 502
-        except PytubeError as exc:
-            app.logger.exception("Erro do pytube ao inicializar o video %s", video_id)
-            return jsonify({"error": "Erro pytube", "message": str(exc)}), 500
-
-        try:
-            stream = (
-                yt.streams
+                target.streams
                 .filter(progressive=True, file_extension="mp4")
                 .order_by("resolution")
                 .desc()
                 .first()
             )
+
+        try:
+            stream = fetch_stream(yt)
         except HTTPError as http_err:
-            app.logger.warning(
-                "HTTPError ao obter streams do video %s: %s", video_id, http_err
-            )
-            return jsonify(
-                {
-                    "error": "HTTPError",
-                    "message": "Nao foi possivel obter as streams do video. O YouTube retornou erro 400.",
-                }
-            ), 502
+            app.logger.warning("HTTPError ao obter streams do video %s: %s", video_id, http_err)
+            try:
+                app.logger.info("Tentando bypass_age_gate para %s", video_id)
+                yt.bypass_age_gate()
+                stream = fetch_stream(yt)
+            except Exception as sub_exc:  # pylint: disable=broad-except
+                app.logger.warning("Falha ao aplicar bypass_age_gate: %s", sub_exc)
+                return jsonify(
+                    {
+                        "error": "HTTPError",
+                        "message": "Nao foi possivel obter as streams do video. O YouTube retornou erro 400.",
+                    }
+                ), 502
         except PytubeError as exc:
-            app.logger.exception(
-                "Erro do pytube ao processar streams do video %s", video_id
-            )
+            app.logger.exception("Erro do pytube ao processar streams do video %s", video_id)
             return jsonify({"error": "Erro pytube", "message": str(exc)}), 500
 
         if stream is None:
