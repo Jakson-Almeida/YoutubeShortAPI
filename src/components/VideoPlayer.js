@@ -13,15 +13,26 @@ const VideoPlayer = ({ video, onClose }) => {
     setDownloadError(null);
 
     try {
-      // Tentar usar um serviço de API externo para download
-      // Nota: Para produção, você precisará de um backend próprio ou usar uma API paga
+      // Chama o backend Python (proxiado pelo React) que utiliza pytube
+      // para buscar o vídeo, converter para MP4 e devolver o binário.
       const response = await fetch(`/api/download?videoId=${videoId}`, {
         method: 'GET',
       });
 
       if (!response.ok) {
-        // Se não houver backend, fornecer alternativa
-        throw new Error('Serviço de download não disponível. Use a URL abaixo para baixar manualmente.');
+        // Quando o backend responde com erro (ex: vídeo indisponível),
+        // tentamos extrair a mensagem retornada para exibir ao usuário.
+        let message = 'Serviço de download não disponível. Use a URL abaixo para baixar manualmente.';
+        try {
+          const errorResponse = await response.json();
+          if (errorResponse?.error) {
+            message = `${message} (${errorResponse.error}${errorResponse.message ? `: ${errorResponse.message}` : ''})`;
+          }
+        } catch (_) {
+          // ignora caso não seja JSON
+        }
+
+        throw new Error(message);
       }
 
       const blob = await response.blob();
@@ -34,6 +45,8 @@ const VideoPlayer = ({ video, onClose }) => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
+      console.error('Erro ao tentar baixar vídeo:', error);
+
       // Verificar se é erro de conexão (backend não está rodando)
       if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
         setDownloadError('Backend Python não está rodando. Vá até python-backend/, instale as dependências e execute "python app.py".');
