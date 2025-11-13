@@ -64,9 +64,16 @@ npm start
    - Com um vídeo aberto, clique no botão "⬇️ Baixar Vídeo"
    - ⚠️ **Nota**: Para downloads funcionarem completamente, você precisará configurar um backend ou usar serviços de terceiros
 
-## 🔧 Backend Python com pytube (para downloads)
+## 🔧 Backend Python para Downloads
 
-Para habilitar downloads funcionais, foi adicionado um backend em Python baseado em [pytube](https://github.com/pytube/pytube):
+Para habilitar downloads funcionais, foi adicionado um backend em Python que utiliza **yt-dlp** (prioritário) e **pytube** (fallback):
+
+### 🎯 Métodos de Download (em ordem de prioridade):
+
+1. **yt-dlp** (PRIMEIRA PRIORIDADE) - Mais confiável e atualizado, com suporte a +1.800 sites
+2. **pytube** (FALLBACK) - Usado automaticamente se yt-dlp falhar
+
+### 📦 Instalação:
 
 1. **Instale as dependências** (recomendado criar um ambiente virtual):
 ```bash
@@ -88,10 +95,15 @@ python app.py
 
 O servidor rodará na porta `5000`. O frontend já está configurado para apontar para esse backend através da propriedade `proxy` em `package.json`.
 
+### 📚 Documentação Adicional:
+
+- Veja `python-backend/INSTALL_YTDLP.md` para instruções detalhadas sobre o yt-dlp
+- Para melhor qualidade de vídeo, instale o **ffmpeg** (veja o guia de instalação)
+
 ⚠️ **Importante**:
-- O pytube segue a documentação oficial para download de vídeos, mas pode ser impactado por mudanças no YouTube.
-- Para produção, considere adicionar autenticação, cache e rate limiting.
-- O download de vídeos pode violar os Termos de Serviço do YouTube.
+- O yt-dlp é atualizado frequentemente para acompanhar mudanças do YouTube
+- Para produção, considere adicionar autenticação, cache e rate limiting
+- O download de vídeos pode violar os Termos de Serviço do YouTube
 
 ## 📁 Estrutura do Projeto
 
