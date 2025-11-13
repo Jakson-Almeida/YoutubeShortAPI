@@ -113,6 +113,129 @@
   padding-top: 20px;
 }
 
+.quality-selector {
+  margin-bottom: 15px;
+}
+
+.quality-selector label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.quality-select {
+  width: 100%;
+  padding: 10px 15px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.quality-select:hover:not(:disabled) {
+  border-color: #667eea;
+}
+
+.quality-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.loading-formats {
+  margin-bottom: 15px;
+  padding: 10px;
+  text-align: center;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.download-progress {
+  margin-top: 15px;
+  margin-bottom: 15px;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 25px;
+  background: #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  transition: width 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.progress-percent {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 1rem;
+}
+
+.progress-details {
+  display: flex;
+  gap: 15px;
+  color: #666;
+  flex-wrap: wrap;
+}
+
+.download-speed {
+  color: #28a745;
+  font-weight: 500;
+}
+
+.progress-complete {
+  color: #28a745;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
 .download-button {
   width: 100%;
   padding: 15px 25px;

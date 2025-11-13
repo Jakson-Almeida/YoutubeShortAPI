@@ -1,28 +1,145 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './VideoPlayer.css';
 
 const VideoPlayer = ({ video, onClose }) => {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(null);
+  const [formats, setFormats] = useState([]);
+  const [selectedQuality, setSelectedQuality] = useState('best');
+  const [loadingFormats, setLoadingFormats] = useState(true);
+  const [downloadProgress, setDownloadProgress] = useState(null);
 
   const videoId = video.id.videoId;
   const embedUrl = `https://www.youtube.com/embed/${videoId}`;
 
+  // Buscar formatos disponíveis quando o componente é montado
+  useEffect(() => {
+    const fetchFormats = async () => {
+      try {
+        setLoadingFormats(true);
+        const response = await fetch(`/api/formats?videoId=${videoId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setFormats(data.formats || []);
+          if (data.formats && data.formats.length > 0) {
+            setSelectedQuality(data.formats[0].format_id || 'best');
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao buscar formatos:', error);
+      } finally {
+        setLoadingFormats(false);
+      }
+    };
+
+    fetchFormats();
+  }, [videoId]);
+
   const handleDownload = async () => {
     setDownloading(true);
     setDownloadError(null);
+    setDownloadProgress({ status: 'starting', percent: 0, downloaded_mb: 0, total_mb: 0, speed_mbps: 0 });
 
     try {
-      // Chama o backend Python (proxiado pelo React) que utiliza pytube
-      // para buscar o vídeo, converter para MP4 e devolver o binário.
-      const response = await fetch(`/api/download?videoId=${videoId}`, {
-        method: 'GET',
-      });
+      // Usar EventSource para receber progresso via Server-Sent Events
+      const eventSource = new EventSource(
+        `/api/download?videoId=${videoId}&quality=${selectedQuality}&progress=true`
+      );
 
+      let downloadCompleted = false;
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.status === 'downloading' || data.status === 'starting') {
+            setDownloadProgress({
+              status: data.status,
+              percent: data.percent || 0,
+              downloaded_mb: data.downloaded_mb || 0,
+              total_mb: data.total_mb || 0,
+              speed_mbps: data.speed_mbps || 0,
+            });
+          } else if (data.status === 'completed') {
+            filename = data.filename || `${video.snippet.title.replace(/[^a-z0-9]/gi, '_')}.mp4`;
+            setDownloadProgress(prev => ({ ...prev, status: 'completed', percent: 100 }));
+            
+            // Fazer download do arquivo após progresso completar
+            eventSource.close();
+            downloadCompleted = true;
+            
+            // Baixar arquivo normalmente
+            handleDownloadFile(selectedQuality, filename);
+          } else if (data.status === 'error') {
+            eventSource.close();
+            throw new Error(data.error || 'Erro ao baixar vídeo');
+          }
+        } catch (error) {
+          console.error('Erro ao processar evento SSE:', error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('Erro no EventSource:', error);
+        eventSource.close();
+        
+        // Fallback: tentar download normal sem progresso
+        if (!downloadCompleted) {
+          handleDownloadFallback();
+        }
+      };
+
+      // Timeout de segurança (10 minutos)
+      setTimeout(() => {
+        if (!downloadCompleted) {
+          eventSource.close();
+          setDownloadError('Timeout: O download demorou muito. Tente novamente.');
+          setDownloading(false);
+          setDownloadProgress(null);
+        }
+      }, 600000);
+
+    } catch (error) {
+      console.error('Erro ao iniciar download:', error);
+      // Fallback para download normal
+      handleDownloadFallback();
+    }
+  };
+
+  const handleDownloadFile = async (quality, filename) => {
+    try {
+      const response = await fetch(`/api/download?videoId=${videoId}&quality=${quality}`);
+      
       if (!response.ok) {
-        // Quando o backend responde com erro (ex: vídeo indisponível),
-        // tentamos extrair a mensagem retornada para exibir ao usuário.
-        let message = 'Serviço de download não disponível. Use a URL abaixo para baixar manualmente.';
+        throw new Error('Erro ao baixar arquivo');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setDownloading(false);
+      setDownloadProgress(null);
+    } catch (error) {
+      console.error('Erro ao baixar arquivo:', error);
+      setDownloadError('Erro ao baixar arquivo. Tente novamente.');
+      setDownloading(false);
+      setDownloadProgress(null);
+    }
+  };
+
+  const handleDownloadFallback = async () => {
+    try {
+      const response = await fetch(`/api/download?videoId=${videoId}&quality=${selectedQuality}`);
+      
+      if (!response.ok) {
+        let message = 'Serviço de download não disponível.';
         try {
           const errorResponse = await response.json();
           if (errorResponse?.error) {
@@ -31,7 +148,6 @@ const VideoPlayer = ({ video, onClose }) => {
         } catch (_) {
           // ignora caso não seja JSON
         }
-
         throw new Error(message);
       }
 
@@ -44,25 +160,27 @@ const VideoPlayer = ({ video, onClose }) => {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
+      setDownloading(false);
+      setDownloadProgress(null);
     } catch (error) {
-      console.error('Erro ao tentar baixar vídeo:', error);
-
-      // Verificar se é erro de conexão (backend não está rodando)
+      console.error('Erro ao baixar vídeo (fallback):', error);
+      
       if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
         setDownloadError('Backend Python não está rodando. Vá até python-backend/, instale as dependências e execute "python app.py".');
       } else {
         setDownloadError(error.message);
       }
       
-      // Fornecer link alternativo usando serviços online gratuitos
       const alternativeUrl = `https://www.y2mate.com/youtube/${videoId}`;
       setTimeout(() => {
         if (window.confirm('Serviço de download não disponível. Deseja abrir um serviço online alternativo?')) {
           window.open(alternativeUrl, '_blank');
         }
       }, 500);
-    } finally {
+      
       setDownloading(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -95,13 +213,74 @@ const VideoPlayer = ({ video, onClose }) => {
             </p>
 
             <div className="download-section">
+              {/* Seletor de Qualidade */}
+              {!loadingFormats && formats.length > 0 && (
+                <div className="quality-selector">
+                  <label htmlFor="quality-select">Qualidade do vídeo:</label>
+                  <select
+                    id="quality-select"
+                    value={selectedQuality}
+                    onChange={(e) => setSelectedQuality(e.target.value)}
+                    disabled={downloading}
+                    className="quality-select"
+                  >
+                    {formats.map((format) => (
+                      <option key={format.format_id} value={format.format_id}>
+                        {format.quality}
+                        {format.filesize_mb ? ` (~${format.filesize_mb} MB)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {loadingFormats && (
+                <div className="loading-formats">
+                  <p>Carregando qualidades disponíveis...</p>
+                </div>
+              )}
+
+              {/* Botão de Download */}
               <button
                 className="download-button"
                 onClick={handleDownload}
-                disabled={downloading}
+                disabled={downloading || loadingFormats}
               >
                 {downloading ? '⏳ Baixando...' : '⬇️ Baixar Vídeo'}
               </button>
+
+              {/* Progresso do Download */}
+              {downloadProgress && (
+                <div className="download-progress">
+                  <div className="progress-bar-container">
+                    <div 
+                      className="progress-bar" 
+                      style={{ width: `${downloadProgress.percent || 0}%` }}
+                    ></div>
+                  </div>
+                  <div className="progress-info">
+                    <span className="progress-percent">
+                      {downloadProgress.percent?.toFixed(1) || 0}%
+                    </span>
+                    {downloadProgress.status === 'downloading' && (
+                      <div className="progress-details">
+                        <span>
+                          {downloadProgress.downloaded_mb?.toFixed(2) || 0} MB
+                          {downloadProgress.total_mb ? ` / ${downloadProgress.total_mb.toFixed(2)} MB` : ''}
+                        </span>
+                        {downloadProgress.speed_mbps > 0 && (
+                          <span className="download-speed">
+                            @ {downloadProgress.speed_mbps.toFixed(2)} MB/s
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {downloadProgress.status === 'completed' && (
+                      <span className="progress-complete">✓ Download concluído!</span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {downloadError && (
                 <div className="download-error">

@@ -5,8 +5,10 @@ from io import BytesIO
 
 from urllib.error import HTTPError
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, Response, stream_with_context
 from flask_cors import CORS
+import json
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -51,10 +53,141 @@ def health_check():
     return jsonify({"status": "OK", "message": message, "methods": methods})
 
 
-def download_with_ytdlp(video_id: str):
+@app.get("/api/formats")
+def get_video_formats():
+    """
+    Retorna as qualidades disponíveis para um vídeo.
+    """
+    video_id = request.args.get("videoId")
+    if not video_id:
+        return jsonify({"error": "ID do video nao fornecido"}), 400
+
+    if not YT_DLP_AVAILABLE:
+        return jsonify({"error": "yt-dlp não está disponível"}), 503
+
+    candidate_urls = [
+        f"https://www.youtube.com/watch?v={video_id}",
+        f"https://www.youtube.com/shorts/{video_id}",
+        f"https://youtu.be/{video_id}",
+    ]
+
+    for video_url in candidate_urls:
+        try:
+            ydl_opts = {
+                'listformats': True,
+                'quiet': True,
+                'no_warnings': True,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+                
+                formats = []
+                seen_qualities = set()
+                
+                # Processar formatos disponíveis
+                for fmt in info.get('formats', []):
+                    # Filtrar apenas formatos de vídeo com H.264 (evitar AV1)
+                    vcodec = fmt.get('vcodec', 'none')
+                    if vcodec == 'none' or 'av01' in vcodec.lower():
+                        continue
+                    
+                    height = fmt.get('height')
+                    width = fmt.get('width')
+                    filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0)
+                    format_id = fmt.get('format_id')
+                    ext = fmt.get('ext', 'mp4')
+                    
+                    if height:
+                        # Criar label de qualidade
+                        if height >= 2160:
+                            quality_label = "4K (2160p)"
+                        elif height >= 1440:
+                            quality_label = "2K (1440p)"
+                        elif height >= 1080:
+                            quality_label = "Full HD (1080p)"
+                        elif height >= 720:
+                            quality_label = "HD (720p)"
+                        elif height >= 480:
+                            quality_label = "SD (480p)"
+                        elif height >= 360:
+                            quality_label = "360p"
+                        else:
+                            quality_label = f"{height}p"
+                        
+                        quality_key = f"{height}p"
+                        
+                        # Evitar duplicatas e priorizar H.264
+                        if quality_key not in seen_qualities or 'avc1' in vcodec.lower():
+                            if quality_key in seen_qualities:
+                                # Substituir se for H.264
+                                formats = [f for f in formats if f.get('height') != height]
+                            
+                            seen_qualities.add(quality_key)
+                            formats.append({
+                                'format_id': format_id,
+                                'quality': quality_label,
+                                'height': height,
+                                'width': width,
+                                'filesize': filesize,
+                                'filesize_mb': round(filesize / (1024 * 1024), 2) if filesize else None,
+                                'vcodec': vcodec,
+                                'ext': ext,
+                            })
+                
+                # Ordenar por altura (maior primeiro)
+                formats.sort(key=lambda x: x['height'], reverse=True)
+                
+                # Adicionar opção "Melhor qualidade disponível"
+                formats.insert(0, {
+                    'format_id': 'best',
+                    'quality': 'Melhor qualidade disponível',
+                    'height': None,
+                    'width': None,
+                    'filesize': None,
+                    'filesize_mb': None,
+                    'vcodec': None,
+                    'ext': 'mp4',
+                })
+                
+                return jsonify({
+                    "formats": formats,
+                    "video_id": video_id,
+                    "title": info.get('title', 'Video')
+                })
+                
+        except Exception as exc:
+            app.logger.warning("Erro ao obter formatos (%s): %s", video_url, str(exc))
+            continue
+    
+    return jsonify({"error": "Não foi possível obter formatos do vídeo"}), 500
+
+
+def get_format_selector(quality=None):
+    """
+    Retorna a string de formato baseada na qualidade selecionada.
+    """
+    if quality == 'best' or quality is None:
+        # Melhor qualidade disponível (H.264)
+        return ('bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[acodec^=mp4a][ext=m4a]/'
+                'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
+                'bestvideo[ext=mp4][vcodec!*=av01][vcodec!*=vp09]+bestaudio[ext=m4a]/'
+                'bestvideo[ext=mp4][vcodec!*=av01]+bestaudio[ext=m4a]/'
+                'best[ext=mp4][vcodec!*=av01]/best[vcodec!*=av01]')
+    else:
+        # Qualidade específica (format_id)
+        return quality
+
+
+def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
     """
     Tenta baixar o vídeo usando yt-dlp (PRIMEIRA PRIORIDADE).
     Retorna (success, buffer, filename, error_message)
+    
+    Args:
+        video_id: ID do vídeo do YouTube
+        quality: format_id específico ou 'best' para melhor qualidade
+        progress_callback: função callback(d, status) para progresso
     """
     if not YT_DLP_AVAILABLE:
         return False, None, None, "yt-dlp não está instalado"
@@ -67,25 +200,13 @@ def download_with_ytdlp(video_id: str):
 
     for video_url in candidate_urls:
         try:
-            app.logger.info("Tentando download com yt-dlp: %s", video_url)
+            app.logger.info("Tentando download com yt-dlp: %s (qualidade: %s)", video_url, quality or 'best')
             
             # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
-            # Prioriza: H.264 (avc1) que é universalmente suportado (Windows, Android, Linux, Mac)
-            # Evita: AV1 (av01) que não é suportado pelo player do Windows
-            # Formato: MP4 com codec H.264 para máxima compatibilidade
+            format_selector = get_format_selector(quality)
+            
             ydl_opts = {
-                # Prioriza vídeo H.264 (avc1) + áudio AAC
-                # Exclui explicitamente AV1 (av01) para garantir compatibilidade
-                # Ordem de prioridade:
-                # 1. Melhor vídeo H.264 MP4 + melhor áudio AAC
-                # 2. Melhor vídeo H.264 (qualquer container) + melhor áudio AAC
-                # 3. Melhor vídeo MP4 (exceto AV1) + melhor áudio
-                # 4. Melhor qualidade geral (exceto AV1)
-                'format': 'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[acodec^=mp4a][ext=m4a]/'
-                         'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
-                         'bestvideo[ext=mp4][vcodec!*=av01][vcodec!*=vp09]+bestaudio[ext=m4a]/'
-                         'bestvideo[ext=mp4][vcodec!*=av01]+bestaudio[ext=m4a]/'
-                         'best[ext=mp4][vcodec!*=av01]/best[vcodec!*=av01]',
+                'format': format_selector,
                 'merge_output_format': 'mp4',  # Garante que o merge seja MP4
                 'outtmpl': '%(title)s.%(ext)s',
                 'quiet': True,
@@ -93,6 +214,33 @@ def download_with_ytdlp(video_id: str):
                 'noplaylist': True,
                 'extract_flat': False,
             }
+            
+            # Adicionar hook de progresso se callback fornecido
+            if progress_callback:
+                def progress_hook(d):
+                    if d['status'] == 'downloading':
+                        total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                        downloaded = d.get('downloaded_bytes', 0)
+                        if total > 0:
+                            percent = (downloaded / total) * 100
+                            speed = d.get('speed', 0)
+                            progress_callback({
+                                'status': 'downloading',
+                                'percent': round(percent, 2),
+                                'downloaded_bytes': downloaded,
+                                'total_bytes': total,
+                                'downloaded_mb': round(downloaded / (1024 * 1024), 2),
+                                'total_mb': round(total / (1024 * 1024), 2),
+                                'speed': speed,
+                                'speed_mbps': round(speed / (1024 * 1024), 2) if speed else 0,
+                            })
+                    elif d['status'] == 'finished':
+                        progress_callback({
+                            'status': 'finished',
+                            'percent': 100,
+                        })
+                
+                ydl_opts['progress_hooks'] = [progress_hook]
 
             buffer = BytesIO()
             
@@ -229,20 +377,33 @@ def download_video():
     Endpoint principal chamado pelo frontend quando o usuario clica em
     "Baixar video". Ele recebe o ID do video via querystring.
     
+    Parâmetros:
+    - videoId: ID do vídeo (obrigatório)
+    - quality: format_id ou 'best' para melhor qualidade (opcional)
+    - progress: 'true' para usar Server-Sent Events com progresso (opcional)
+    
     PRIORIDADE DE DOWNLOAD:
     1. yt-dlp (PRIMEIRA TENTATIVA - mais confiável e atualizado)
     2. pytube (FALLBACK - caso yt-dlp falhe)
     
-    Retorna o binário do vídeo MP4 diretamente.
+    Retorna o binário do vídeo MP4 diretamente ou SSE stream com progresso.
     """
     video_id = request.args.get("videoId")
+    quality = request.args.get("quality", "best")
+    use_progress = request.args.get("progress", "false").lower() == "true"
+    
     if not video_id:
         return jsonify({"error": "ID do video nao fornecido"}), 400
 
+    # Se progresso está habilitado, iniciar download em background e retornar imediatamente
+    # O frontend deve fazer polling em /api/download/progress
+    # Por enquanto, vamos fazer download normal e adicionar progresso depois
+
+    # Download normal sem progresso
     # TENTATIVA 1: yt-dlp (PRIMEIRA PRIORIDADE)
     if YT_DLP_AVAILABLE:
-        app.logger.info("Tentando download com yt-dlp (método prioritário) para vídeo: %s", video_id)
-        success, buffer, filename, error_msg = download_with_ytdlp(video_id)
+        app.logger.info("Tentando download com yt-dlp (método prioritário) para vídeo: %s (qualidade: %s)", video_id, quality)
+        success, buffer, filename, error_msg = download_with_ytdlp(video_id, quality)
         
         if success:
             return send_file(
@@ -285,6 +446,98 @@ def download_video():
         "error": "Erro desconhecido",
         "message": "Não foi possível processar o download"
     }), 500
+
+
+# Armazenamento temporário de progresso (em produção, usar Redis ou similar)
+download_progress = {}
+
+@app.get("/api/download/progress")
+def get_download_progress():
+    """
+    Endpoint para obter progresso do download via polling.
+    """
+    video_id = request.args.get("videoId")
+    if not video_id:
+        return jsonify({"error": "ID do video nao fornecido"}), 400
+    
+    progress = download_progress.get(video_id, {'status': 'not_started'})
+    return jsonify(progress)
+
+
+def download_with_progress(video_id: str, quality: str):
+    """
+    Download com progresso usando Server-Sent Events (SSE).
+    Envia apenas progresso via SSE. O arquivo será baixado via endpoint normal após conclusão.
+    """
+    def generate():
+        progress_data = {'status': 'starting', 'percent': 0, 'downloaded_mb': 0, 'total_mb': 0, 'speed_mbps': 0}
+        download_progress[video_id] = progress_data
+        
+        def progress_callback(data):
+            progress_data.update(data)
+            download_progress[video_id] = progress_data.copy()
+            # Enviar progresso via SSE
+            return f"data: {json.dumps(progress_data)}\n\n"
+        
+        try:
+            # Iniciar download
+            yield f"data: {json.dumps({'status': 'starting', 'percent': 0})}\n\n"
+            
+            # Fazer download em thread separada e enviar progresso
+            import queue
+            progress_queue = queue.Queue()
+            
+            def download_thread():
+                try:
+                    def callback(data):
+                        progress_queue.put(data)
+                    
+                    success, buffer, filename, error_msg = download_with_ytdlp(video_id, quality, callback)
+                    
+                    if success:
+                        # Salvar buffer temporariamente (em produção, usar Redis ou storage)
+                        download_progress[video_id] = {
+                            'status': 'completed',
+                            'percent': 100,
+                            'filename': filename,
+                            'buffer_ready': True
+                        }
+                        progress_queue.put({'status': 'completed', 'percent': 100, 'filename': filename})
+                    else:
+                        progress_queue.put({'status': 'error', 'error': error_msg})
+                except Exception as exc:
+                    progress_queue.put({'status': 'error', 'error': str(exc)})
+            
+            thread = threading.Thread(target=download_thread)
+            thread.start()
+            
+            # Enviar progresso enquanto download está em andamento
+            import time
+            while thread.is_alive():
+                try:
+                    data = progress_queue.get(timeout=0.5)
+                    yield f"data: {json.dumps(data)}\n\n"
+                except queue.Empty:
+                    # Enviar progresso atual
+                    current = download_progress.get(video_id, {})
+                    if current.get('status') != 'completed':
+                        yield f"data: {json.dumps(current)}\n\n"
+                    time.sleep(0.5)
+            
+            # Aguardar thread terminar
+            thread.join()
+            
+            # Enviar resultado final
+            final_data = download_progress.get(video_id, {})
+            yield f"data: {json.dumps(final_data)}\n\n"
+            
+        except Exception as exc:
+            yield f"data: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
+        finally:
+            # Manter progresso por 5 minutos para download do arquivo
+            pass
+    
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
 if __name__ == "__main__":
