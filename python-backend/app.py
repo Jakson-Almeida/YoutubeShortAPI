@@ -69,10 +69,23 @@ def download_with_ytdlp(video_id: str):
         try:
             app.logger.info("Tentando download com yt-dlp: %s", video_url)
             
-            # Configuração do yt-dlp para baixar melhor qualidade MP4
-            # Prioriza: melhor vídeo MP4 + melhor áudio, depois melhor MP4, depois melhor qualidade geral
+            # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
+            # Prioriza: H.264 (avc1) que é universalmente suportado (Windows, Android, Linux, Mac)
+            # Evita: AV1 (av01) que não é suportado pelo player do Windows
+            # Formato: MP4 com codec H.264 para máxima compatibilidade
             ydl_opts = {
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best',
+                # Prioriza vídeo H.264 (avc1) + áudio AAC
+                # Exclui explicitamente AV1 (av01) para garantir compatibilidade
+                # Ordem de prioridade:
+                # 1. Melhor vídeo H.264 MP4 + melhor áudio AAC
+                # 2. Melhor vídeo H.264 (qualquer container) + melhor áudio AAC
+                # 3. Melhor vídeo MP4 (exceto AV1) + melhor áudio
+                # 4. Melhor qualidade geral (exceto AV1)
+                'format': 'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[acodec^=mp4a][ext=m4a]/'
+                         'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
+                         'bestvideo[ext=mp4][vcodec!*=av01][vcodec!*=vp09]+bestaudio[ext=m4a]/'
+                         'bestvideo[ext=mp4][vcodec!*=av01]+bestaudio[ext=m4a]/'
+                         'best[ext=mp4][vcodec!*=av01]/best[vcodec!*=av01]',
                 'merge_output_format': 'mp4',  # Garante que o merge seja MP4
                 'outtmpl': '%(title)s.%(ext)s',
                 'quiet': True,
