@@ -152,18 +152,6 @@ YoutubeShortAPI/
 
 3. **Filtro de Shorts**: O código filtra vídeos por duração curta, mas isso não garante 100% que sejam Shorts. Você pode melhorar isso usando filtros adicionais da API.
 
-## 🎨 Customização
-
-Você pode personalizar as cores, estilos e layout editando os arquivos CSS em `src/App.css` e nos componentes individuais.
-
-## 📝 Licença
-
-Este projeto é apenas para fins educacionais. Certifique-se de respeitar os Termos de Serviço do YouTube ao usar este aplicativo.
-
-## 🤝 Contribuindo
-
-Sinta-se à vontade para abrir issues ou pull requests com melhorias!
-
 ---
 
 Desenvolvido com ❤️ usando React
