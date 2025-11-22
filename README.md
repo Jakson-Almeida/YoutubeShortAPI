@@ -60,10 +60,6 @@ npm start
    - Clique em qualquer card de vídeo
    - O player será aberto em uma modal
 
-5. **Baixe um vídeo**:
-   - Com um vídeo aberto, clique no botão "⬇️ Baixar Vídeo"
-   - ⚠️ **Nota**: Para downloads funcionarem completamente, você precisará configurar um backend ou usar serviços de terceiros
-
 ## 🔧 Backend Python para Downloads
 
 Para habilitar downloads funcionais, foi adicionado um backend em Python que utiliza **yt-dlp** (prioritário) e **pytube** (fallback):
