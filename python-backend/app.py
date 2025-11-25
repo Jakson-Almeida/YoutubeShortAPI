@@ -175,8 +175,17 @@ def get_format_selector(quality=None):
                 'bestvideo[ext=mp4][vcodec!*=av01]+bestaudio[ext=m4a]/'
                 'best[ext=mp4][vcodec!*=av01]/best[vcodec!*=av01]')
     else:
-        # Qualidade específica (format_id)
-        return quality
+        # Qualidade específica (format_id) precisa ser combinada com o melhor áudio disponível
+        # para evitar downloads apenas de vídeo (DASH) sem áudio.
+        # A ordem abaixo tenta:
+        # 1. vídeo selecionado + melhor áudio mp4a
+        # 2. vídeo selecionado + melhor áudio disponível
+        # 3. fallback para o formato selecionado isolado (caso já seja progressivo)
+        return (
+            f"{quality}+bestaudio[acodec^=mp4a][ext=m4a]/"
+            f"{quality}+bestaudio/"
+            f"{quality}"
+        )
 
 
 def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
