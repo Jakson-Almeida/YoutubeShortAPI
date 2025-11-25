@@ -313,12 +313,12 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                         try:
                             all_files = os.listdir(tmpdir)
                             # Procurar arquivo final (.mp4 que não seja temporário)
-                            # Também aceitar .temp.mp4 se o FFmpeg criou mas não renomeou
+                            # Excluir todos os arquivos temporários do yt-dlp (.f*.mp4, .f*.m4a)
                             candidate_files = [
                                 f for f in all_files 
                                 if f.endswith('.mp4') 
                                 and os.path.isfile(os.path.join(tmpdir, f))
-                                and not f.endswith(('.f137.mp4', '.f140.m4a', '.f299.mp4'))
+                                and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f136.mp4, .f137.mp4, etc.
                             ]
                             
                             # Priorizar arquivo final (não .temp.mp4)
@@ -342,19 +342,42 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                             
                             # Se encontrar arquivo final, usar ele
                             if final_files and not final_mp4_files:
-                                final_mp4_files = final_files
-                                print(f"[MONITOR] Arquivo final detectado: {final_mp4_files[0]}")
-                                app.logger.info("Arquivo final detectado durante download: %s", final_mp4_files[0])
-                                # Aguardar um pouco mais para garantir que está completo
-                                time.sleep(3)
-                                # Se arquivo existe e não está sendo modificado, podemos continuar
-                                file_path = os.path.join(tmpdir, final_mp4_files[0])
-                                file_size = os.path.getsize(file_path)
-                                time.sleep(2)
-                                if os.path.getsize(file_path) == file_size:  # Arquivo não mudou
-                                    print(f"[MONITOR] Arquivo final estável ({file_size} bytes). Finalizando.")
-                                    app.logger.info("Arquivo final estável (tamanho: %d bytes). Finalizando download.", file_size)
-                                    break
+                                try:
+                                    file_path = os.path.join(tmpdir, final_files[0])
+                                    if not os.path.exists(file_path):
+                                        continue  # Arquivo foi deletado, continuar monitorando
+                                    
+                                    final_mp4_files = final_files
+                                    print(f"[MONITOR] Arquivo final detectado: {final_mp4_files[0]}")
+                                    app.logger.info("Arquivo final detectado durante download: %s", final_mp4_files[0])
+                                    
+                                    # Aguardar um pouco mais para garantir que está completo
+                                    time.sleep(3)
+                                    
+                                    # Verificar se arquivo ainda existe e está estável
+                                    if not os.path.exists(file_path):
+                                        print(f"[MONITOR] Arquivo foi deletado durante verificação, continuando monitoramento...")
+                                        final_mp4_files = []  # Reset para continuar procurando
+                                        continue
+                                    
+                                    file_size = os.path.getsize(file_path)
+                                    time.sleep(2)
+                                    
+                                    # Verificar novamente se arquivo ainda existe e está estável
+                                    if not os.path.exists(file_path):
+                                        print(f"[MONITOR] Arquivo foi deletado durante verificação de tamanho, continuando monitoramento...")
+                                        final_mp4_files = []  # Reset para continuar procurando
+                                        continue
+                                    
+                                    if os.path.getsize(file_path) == file_size:  # Arquivo não mudou
+                                        print(f"[MONITOR] Arquivo final estável ({file_size} bytes). Finalizando.")
+                                        app.logger.info("Arquivo final estável (tamanho: %d bytes). Finalizando download.", file_size)
+                                        break
+                                except (OSError, FileNotFoundError) as e:
+                                    # Arquivo pode ter sido deletado, continuar monitorando
+                                    print(f"[MONITOR] Arquivo não acessível durante verificação: {e}")
+                                    final_mp4_files = []  # Reset para continuar procurando
+                                    continue
                             
                             # Log periódico
                             elapsed = int(time.time() - wait_start)
@@ -384,15 +407,25 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     # Se já encontramos arquivo final durante o monitoramento, usar ele
                     if final_mp4_files:
                         downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
-                        print(f"[MONITOR] Usando arquivo encontrado: {final_mp4_files[0]}")
-                        app.logger.info("Usando arquivo final encontrado durante monitoramento: %s", downloaded_file)
-                    else:
+                        # Verificar se o arquivo ainda existe antes de usar
+                        if not os.path.exists(downloaded_file):
+                            print(f"[MONITOR] Arquivo não existe mais, procurando novamente...")
+                            app.logger.warning("Arquivo encontrado anteriormente não existe mais: %s", downloaded_file)
+                            final_mp4_files = []  # Resetar para procurar novamente
+                        else:
+                            print(f"[MONITOR] Usando arquivo encontrado: {final_mp4_files[0]}")
+                            app.logger.info("Usando arquivo final encontrado durante monitoramento: %s", downloaded_file)
+                    
+                    # Se arquivo não existe ou não foi encontrado, procurar novamente
+                    if not final_mp4_files:
                         # Tentar encontrar agora - primeiro arquivo final, depois .temp.mp4
+                        # Excluir todos os arquivos temporários do yt-dlp (.f*.mp4, .f*.m4a)
                         final_mp4_files = [
                             f for f in all_files 
                             if f.endswith('.mp4') 
                             and os.path.isfile(os.path.join(tmpdir, f))
-                            and not f.endswith(('.f137.mp4', '.f140.m4a', '.f299.mp4', '.temp.mp4'))
+                            and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f136.mp4, .f137.mp4, etc.
+                            and not f.endswith('.temp.mp4')  # Excluir .temp.mp4 temporariamente
                         ]
                         
                         # Se não encontrou arquivo final, tentar .temp.mp4
@@ -414,11 +447,12 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                             print(f"[MONITOR] Arquivo selecionado: {final_mp4_files[0]}")
                             app.logger.info("Arquivo final encontrado após download: %s", downloaded_file)
                         else:
-                            # Fallback: procurar todos os arquivos de vídeo/áudio
+                            # Fallback: procurar todos os arquivos de vídeo/áudio (excluindo temporários)
                             downloaded_files = [f for f in all_files 
                                                if os.path.isfile(os.path.join(tmpdir, f)) 
                                                and f.endswith(('.mp4', '.webm', '.mkv', '.m4a'))
-                                               and not f.endswith(('.f137.mp4', '.f140.m4a', '.f299.mp4', '.temp.mp4'))]  # Excluir temporários
+                                               and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f*.mp4, .f*.m4a
+                                               and not f.endswith('.temp.mp4')]  # Excluir .temp.mp4 também no fallback
                             app.logger.info("Arquivos de vídeo/áudio filtrados: %s", downloaded_files)
                             
                             if not downloaded_files:
