@@ -395,9 +395,27 @@ def download_video():
     if not video_id:
         return jsonify({"error": "ID do video nao fornecido"}), 400
 
-    # Se progresso está habilitado, iniciar download em background e retornar imediatamente
-    # O frontend deve fazer polling em /api/download/progress
-    # Por enquanto, vamos fazer download normal e adicionar progresso depois
+    # Se progresso está habilitado, usar Server-Sent Events (SSE)
+    if use_progress:
+        return download_with_progress(video_id, quality)
+
+    # Verificar se já existe um download concluído em cache (do fluxo de progresso)
+    cached_download = download_progress.get(video_id)
+    if cached_download and cached_download.get('buffer_ready') and cached_download.get('buffer'):
+        app.logger.info("Usando download em cache para vídeo: %s", video_id)
+        buffer = cached_download['buffer']
+        buffer.seek(0)
+        filename = cached_download['filename']
+        
+        # Limpar cache após uso (opcional, mas bom para memória)
+        # del download_progress[video_id] 
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="video/mp4"
+        )
 
     # Download normal sem progresso
     # TENTATIVA 1: yt-dlp (PRIMEIRA PRIORIDADE)
@@ -500,7 +518,8 @@ def download_with_progress(video_id: str, quality: str):
                             'status': 'completed',
                             'percent': 100,
                             'filename': filename,
-                            'buffer_ready': True
+                            'buffer_ready': True,
+                            'buffer': buffer  # Salvar buffer para download imediato
                         }
                         progress_queue.put({'status': 'completed', 'percent': 100, 'filename': filename})
                     else:
