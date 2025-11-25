@@ -214,6 +214,13 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
             format_selector = get_format_selector(quality)
             
+            total_expected_bytes = 0
+            total_components = 1
+            downloaded_total_bytes = 0
+            current_filename = None
+            last_file_bytes = 0
+            remaining_components = 1
+
             ydl_opts = {
                 'format': format_selector,
                 'merge_output_format': 'mp4',  # Garante que o merge seja MP4
@@ -230,40 +237,69 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 merge_started = False
                 
                 def progress_hook(d):
-                    nonlocal merge_started
+                    nonlocal merge_started, total_expected_bytes, downloaded_total_bytes, current_filename, last_file_bytes, remaining_components
                     try:
                         status = d.get('status', '')
                         if status == 'downloading':
-                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                            downloaded = d.get('downloaded_bytes', 0)
-                            if total > 0:
-                                percent = (downloaded / total) * 100
-                                speed = d.get('speed', 0)
-                                progress_callback({
-                                    'status': 'downloading',
-                                    'percent': round(percent, 2),
-                                    'downloaded_bytes': downloaded,
-                                    'total_bytes': total,
-                                    'downloaded_mb': round(downloaded / (1024 * 1024), 2),
-                                    'total_mb': round(total / (1024 * 1024), 2),
-                                    'speed': speed,
-                                    'speed_mbps': round(speed / (1024 * 1024), 2) if speed else 0,
-                                })
+                            filename = d.get('filename') or (d.get('info_dict') or {}).get('id')
+                            if filename != current_filename:
+                                current_filename = filename
+                                last_file_bytes = 0
+                            
+                            downloaded = d.get('downloaded_bytes') or 0
+                            delta = max(0, downloaded - last_file_bytes)
+                            downloaded_total_bytes += delta
+                            last_file_bytes = downloaded
+                            
+                            combined_total = total_expected_bytes or 0
+                            if not combined_total:
+                                combined_total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                            
+                            percent = None
+                            if combined_total:
+                                percent = min(99.9, (downloaded_total_bytes / combined_total) * 100)
+                            
+                            speed = d.get('speed', 0)
+                            progress_callback({
+                                'status': 'downloading',
+                                'percent': round(percent, 2) if percent is not None else None,
+                                'downloaded_bytes': downloaded_total_bytes,
+                                'total_bytes': combined_total if combined_total else None,
+                                'downloaded_mb': round(downloaded_total_bytes / (1024 * 1024), 2),
+                                'total_mb': round(combined_total / (1024 * 1024), 2) if combined_total else None,
+                                'speed': speed,
+                                'speed_mbps': round(speed / (1024 * 1024), 2) if speed else 0,
+                            })
                         elif status == 'finished':
                             app.logger.info("Progress hook: status='finished' - segmentos baixados")
-                            # Quando finished é chamado, o merge ainda vai começar
-                            merge_started = True
-                            progress_callback({
-                                'status': 'processing',
-                                'percent': 100,
-                                'message': 'Processando... Juntando áudio e vídeo (isso pode demorar)'
-                            })
+                            file_total = d.get('total_bytes') or d.get('total_bytes_estimate') or last_file_bytes
+                            if file_total and last_file_bytes < file_total:
+                                downloaded_total_bytes += (file_total - last_file_bytes)
+                            last_file_bytes = 0
+                            remaining_components = max(0, remaining_components - 1)
+                            
+                            if remaining_components <= 0:
+                                merge_started = True
+                                combined_total = total_expected_bytes or downloaded_total_bytes
+                                progress_callback({
+                                    'status': 'processing',
+                                    'percent': 100,
+                                    'downloaded_bytes': downloaded_total_bytes,
+                                    'total_bytes': combined_total,
+                                    'downloaded_mb': round(downloaded_total_bytes / (1024 * 1024), 2),
+                                    'total_mb': round(combined_total / (1024 * 1024), 2) if combined_total else None,
+                                    'message': 'Processando... Juntando áudio e vídeo (isso pode demorar)'
+                                })
                         elif status == 'postprocessor':
                             app.logger.info("Progress hook: status='postprocessor' - merge iniciado")
                             merge_started = True
                             progress_callback({
                                 'status': 'processing',
                                 'percent': 100,
+                                'downloaded_bytes': downloaded_total_bytes,
+                                'total_bytes': total_expected_bytes or downloaded_total_bytes,
+                                'downloaded_mb': round(downloaded_total_bytes / (1024 * 1024), 2),
+                                'total_mb': round((total_expected_bytes or downloaded_total_bytes) / (1024 * 1024), 2),
                                 'message': 'Processando... Juntando áudio e vídeo (isso pode demorar)'
                             })
                     except Exception as e:
@@ -282,6 +318,25 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     # Obter informações do vídeo primeiro
                     info = ydl.extract_info(video_url, download=False)
+
+                    requested_formats = info.get('requested_formats')
+                    if isinstance(requested_formats, list) and requested_formats:
+                        total_components = len([f for f in requested_formats if f])
+                        remaining_components = total_components
+                        total_expected_bytes = 0
+                        for fmt in requested_formats:
+                            if not fmt:
+                                continue
+                            size = fmt.get('filesize') or fmt.get('filesize_approx')
+                            if size:
+                                total_expected_bytes += size
+                    else:
+                        size = info.get('filesize') or info.get('filesize_approx')
+                        if size:
+                            total_expected_bytes = size
+                        total_components = 1
+                        remaining_components = 1
+
                     title = info.get('title', 'video')
                     filename = f"{slugify(title)}.mp4"
                     
