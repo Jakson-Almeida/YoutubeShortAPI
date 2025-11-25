@@ -60,6 +60,13 @@ const VideoPlayer = ({ video, onClose }) => {
               total_mb: data.total_mb || 0,
               speed_mbps: data.speed_mbps || 0,
             });
+          } else if (data.status === 'finished' || data.status === 'processing') {
+            setDownloadProgress(prev => ({ 
+              ...prev, 
+              status: 'processing', 
+              percent: 100,
+              message: 'Processando... Juntando áudio e vídeo'
+            }));
           } else if (data.status === 'completed') {
             filename = data.filename || `${video.snippet.title.replace(/[^a-z0-9]/gi, '_')}.mp4`;
             setDownloadProgress(prev => ({ ...prev, status: 'completed', percent: 100 }));
@@ -277,6 +284,9 @@ const VideoPlayer = ({ video, onClose }) => {
                     )}
                     {downloadProgress.status === 'completed' && (
                       <span className="progress-complete">✓ Download concluído!</span>
+                    )}
+                    {downloadProgress.status === 'processing' && (
+                      <span className="progress-processing">⚙️ {downloadProgress.message || 'Processando...'}</span>
                     )}
                   </div>
                 </div>

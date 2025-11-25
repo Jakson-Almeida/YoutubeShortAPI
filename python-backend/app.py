@@ -236,8 +236,9 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                             })
                     elif d['status'] == 'finished':
                         progress_callback({
-                            'status': 'finished',
+                            'status': 'processing',
                             'percent': 100,
+                            'message': 'Processando... (juntando áudio e vídeo)'
                         })
                 
                 ydl_opts['progress_hooks'] = [progress_hook]
@@ -247,6 +248,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             # Usar yt-dlp para baixar diretamente para o buffer
             with tempfile.TemporaryDirectory() as tmpdir:
                 ydl_opts['outtmpl'] = os.path.join(tmpdir, '%(title)s.%(ext)s')
+                ydl_opts['quiet'] = False # Habilitar logs para debug
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     # Obter informações do vídeo primeiro
@@ -255,7 +257,9 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     filename = f"{slugify(title)}.mp4"
                     
                     # Baixar o vídeo
+                    app.logger.info("Iniciando ydl.download para %s", video_url)
                     ydl.download([video_url])
+                    app.logger.info("ydl.download retornou. Verificando arquivos em %s", tmpdir)
                     
                     # Encontrar o arquivo baixado (pode ser .mp4, .webm, .mkv, etc)
                     downloaded_files = [f for f in os.listdir(tmpdir) 
