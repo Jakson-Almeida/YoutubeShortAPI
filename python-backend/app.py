@@ -218,28 +218,34 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             # Adicionar hook de progresso se callback fornecido
             if progress_callback:
                 def progress_hook(d):
-                    if d['status'] == 'downloading':
-                        total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                        downloaded = d.get('downloaded_bytes', 0)
-                        if total > 0:
-                            percent = (downloaded / total) * 100
-                            speed = d.get('speed', 0)
+                    try:
+                        status = d.get('status', '')
+                        if status == 'downloading':
+                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                            downloaded = d.get('downloaded_bytes', 0)
+                            if total > 0:
+                                percent = (downloaded / total) * 100
+                                speed = d.get('speed', 0)
+                                progress_callback({
+                                    'status': 'downloading',
+                                    'percent': round(percent, 2),
+                                    'downloaded_bytes': downloaded,
+                                    'total_bytes': total,
+                                    'downloaded_mb': round(downloaded / (1024 * 1024), 2),
+                                    'total_mb': round(total / (1024 * 1024), 2),
+                                    'speed': speed,
+                                    'speed_mbps': round(speed / (1024 * 1024), 2) if speed else 0,
+                                })
+                        elif status == 'finished':
+                            app.logger.info("Progress hook: status='finished', download de segmentos concluído")
+                            # Manter status 'finished' como estava antes - o frontend trata isso
                             progress_callback({
-                                'status': 'downloading',
-                                'percent': round(percent, 2),
-                                'downloaded_bytes': downloaded,
-                                'total_bytes': total,
-                                'downloaded_mb': round(downloaded / (1024 * 1024), 2),
-                                'total_mb': round(total / (1024 * 1024), 2),
-                                'speed': speed,
-                                'speed_mbps': round(speed / (1024 * 1024), 2) if speed else 0,
+                                'status': 'finished',
+                                'percent': 100,
                             })
-                    elif d['status'] == 'finished':
-                        progress_callback({
-                            'status': 'processing',
-                            'percent': 100,
-                            'message': 'Processando... (juntando áudio e vídeo)'
-                        })
+                    except Exception as e:
+                        app.logger.error("Erro no progress_hook: %s", str(e))
+                        # Não propagar erro para não quebrar o download
                 
                 ydl_opts['progress_hooks'] = [progress_hook]
 
@@ -248,7 +254,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             # Usar yt-dlp para baixar diretamente para o buffer
             with tempfile.TemporaryDirectory() as tmpdir:
                 ydl_opts['outtmpl'] = os.path.join(tmpdir, '%(title)s.%(ext)s')
-                ydl_opts['quiet'] = False # Habilitar logs para debug
+                # Manter quiet=True para não interferir no comportamento padrão
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     # Obter informações do vídeo primeiro
@@ -258,29 +264,50 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     
                     # Baixar o vídeo
                     app.logger.info("Iniciando ydl.download para %s", video_url)
-                    ydl.download([video_url])
-                    app.logger.info("ydl.download retornou. Verificando arquivos em %s", tmpdir)
+                    try:
+                        ydl.download([video_url])
+                        app.logger.info("ydl.download retornou com sucesso. Verificando arquivos em %s", tmpdir)
+                    except Exception as e:
+                        app.logger.error("Erro durante ydl.download: %s", str(e))
+                        import traceback
+                        app.logger.error(traceback.format_exc())
+                        raise
                     
                     # Encontrar o arquivo baixado (pode ser .mp4, .webm, .mkv, etc)
-                    downloaded_files = [f for f in os.listdir(tmpdir) 
+                    app.logger.info("Listando arquivos em %s", tmpdir)
+                    all_files = os.listdir(tmpdir)
+                    app.logger.info("Arquivos encontrados: %s", all_files)
+                    
+                    downloaded_files = [f for f in all_files 
                                        if os.path.isfile(os.path.join(tmpdir, f)) 
                                        and f.endswith(('.mp4', '.webm', '.mkv', '.m4a'))]
+                    app.logger.info("Arquivos de vídeo/áudio filtrados: %s", downloaded_files)
                     
                     if not downloaded_files:
-                        app.logger.warning("Nenhum arquivo baixado encontrado em %s", tmpdir)
+                        app.logger.warning("Nenhum arquivo baixado encontrado em %s. Arquivos totais: %s", tmpdir, all_files)
                         continue
                     
                     # Priorizar arquivos MP4
                     mp4_files = [f for f in downloaded_files if f.endswith('.mp4')]
                     downloaded_file = os.path.join(tmpdir, mp4_files[0] if mp4_files else downloaded_files[0])
+                    app.logger.info("Arquivo selecionado para leitura: %s", downloaded_file)
                     
                     # Ler o arquivo para o buffer
+                    file_size = os.path.getsize(downloaded_file)
+                    app.logger.info("Tamanho do arquivo: %d bytes", file_size)
+                    
                     with open(downloaded_file, 'rb') as f:
                         buffer.write(f.read())
                     
                     buffer.seek(0)
-                    app.logger.info("Download concluído com yt-dlp: %s (tamanho: %d bytes)", 
-                                  filename, buffer.getbuffer().nbytes)
+                    buffer_size = buffer.getbuffer().nbytes
+                    app.logger.info("Download concluído com yt-dlp: %s (buffer: %d bytes, arquivo: %d bytes)", 
+                                  filename, buffer_size, file_size)
+                    
+                    if buffer_size == 0:
+                        app.logger.error("Buffer vazio após leitura do arquivo!")
+                        continue
+                        
                     return True, buffer, filename, None
 
         except Exception as exc:  # pylint: disable=broad-except
@@ -511,12 +538,21 @@ def download_with_progress(video_id: str, quality: str):
             
             def download_thread():
                 try:
-                    def callback(data):
-                        progress_queue.put(data)
+                    app.logger.info("Thread de download iniciada para vídeo %s", video_id)
                     
+                    def callback(data):
+                        try:
+                            progress_queue.put(data)
+                        except Exception as e:
+                            app.logger.error("Erro ao enviar progresso para queue: %s", str(e))
+                    
+                    app.logger.info("Chamando download_with_ytdlp para vídeo %s", video_id)
                     success, buffer, filename, error_msg = download_with_ytdlp(video_id, quality, callback)
+                    app.logger.info("download_with_ytdlp retornou: success=%s, filename=%s, error=%s", 
+                                  success, filename, error_msg)
                     
                     if success:
+                        app.logger.info("Download bem-sucedido. Salvando buffer no cache para vídeo %s", video_id)
                         # Salvar buffer temporariamente (em produção, usar Redis ou storage)
                         download_progress[video_id] = {
                             'status': 'completed',
@@ -526,9 +562,12 @@ def download_with_progress(video_id: str, quality: str):
                             'buffer': buffer  # Salvar buffer para download imediato
                         }
                         progress_queue.put({'status': 'completed', 'percent': 100, 'filename': filename})
+                        app.logger.info("Status 'completed' enviado para queue. Thread finalizando.")
                     else:
+                        app.logger.error("Download falhou: %s", error_msg)
                         progress_queue.put({'status': 'error', 'error': error_msg})
                 except Exception as exc:
+                    app.logger.exception("Exceção na thread de download para vídeo %s", video_id)
                     progress_queue.put({'status': 'error', 'error': str(exc)})
             
             thread = threading.Thread(target=download_thread)
@@ -536,22 +575,40 @@ def download_with_progress(video_id: str, quality: str):
             
             # Enviar progresso enquanto download está em andamento
             import time
+            max_wait_time = 600  # 10 minutos máximo
+            start_time = time.time()
+            
             while thread.is_alive():
+                # Verificar timeout
+                if time.time() - start_time > max_wait_time:
+                    app.logger.error("Timeout no download para vídeo %s", video_id)
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Timeout: Download demorou muito'})}\n\n"
+                    break
+                    
                 try:
                     data = progress_queue.get(timeout=0.5)
+                    app.logger.debug("Enviando progresso via SSE: %s", data.get('status'))
                     yield f"data: {json.dumps(data)}\n\n"
+                    
+                    # Se recebeu status de completed ou error, sair do loop
+                    if data.get('status') in ('completed', 'error'):
+                        break
                 except queue.Empty:
-                    # Enviar progresso atual
+                    # Enviar progresso atual como heartbeat
                     current = download_progress.get(video_id, {})
-                    if current.get('status') != 'completed':
+                    if current.get('status') not in ('completed', 'error'):
                         yield f"data: {json.dumps(current)}\n\n"
                     time.sleep(0.5)
             
-            # Aguardar thread terminar
-            thread.join()
+            # Aguardar thread terminar (com timeout de 5 segundos)
+            thread.join(timeout=5)
+            
+            if thread.is_alive():
+                app.logger.warning("Thread de download ainda está ativa após timeout para vídeo %s", video_id)
             
             # Enviar resultado final
             final_data = download_progress.get(video_id, {})
+            app.logger.info("Enviando status final: %s", final_data.get('status'))
             yield f"data: {json.dumps(final_data)}\n\n"
             
         except Exception as exc:
