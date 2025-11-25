@@ -51,7 +51,13 @@ const VideoPlayer = ({ video, onClose }) => {
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('Evento SSE recebido:', data);
+          
+          // Log apenas eventos importantes (evitar spam de 'starting')
+          if (data.status === 'downloading' && data.percent > 0) {
+            console.log(`Download: ${data.percent.toFixed(1)}% (${data.downloaded_mb?.toFixed(2) || 0} MB / ${data.total_mb?.toFixed(2) || 0} MB)`);
+          } else if (data.status !== 'starting') {
+            console.log('Evento SSE:', data.status, data);
+          }
           
           if (data.status === 'downloading' || data.status === 'starting') {
             setDownloadProgress({
