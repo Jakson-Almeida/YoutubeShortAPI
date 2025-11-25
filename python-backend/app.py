@@ -772,16 +772,37 @@ def download_with_progress(video_id: str, quality: str):
                         yield f"data: {json.dumps(current)}\n\n"
                     time.sleep(0.5)
             
-            # Aguardar thread terminar (com timeout de 5 segundos)
-            thread.join(timeout=5)
+            # Aguardar thread terminar (com timeout de 10 segundos para garantir)
+            thread.join(timeout=10)
             
             if thread.is_alive():
                 app.logger.warning("Thread de download ainda está ativa após timeout para vídeo %s", video_id)
             
-            # Enviar resultado final
+            # Enviar resultado final - garantir que temos o status correto
             final_data = download_progress.get(video_id, {})
-            app.logger.info("Enviando status final: %s", final_data.get('status'))
-            yield f"data: {json.dumps(final_data)}\n\n"
+            
+            # Se não temos status completed mas a thread terminou, verificar buffer
+            if final_data.get('status') != 'completed' and final_data.get('buffer_ready'):
+                final_data['status'] = 'completed'
+                app.logger.info("Buffer está pronto, marcando como completed")
+            
+            app.logger.info("Enviando status final via SSE: %s, filename=%s", 
+                          final_data.get('status'), final_data.get('filename'))
+            
+            # Enviar evento final com todos os dados necessários
+            final_event = {
+                'status': final_data.get('status', 'unknown'),
+                'percent': final_data.get('percent', 100),
+            }
+            if final_data.get('filename'):
+                final_event['filename'] = final_data['filename']
+            if final_data.get('error'):
+                final_event['error'] = final_data['error']
+            
+            yield f"data: {json.dumps(final_event)}\n\n"
+            
+            # Aguardar um pouco para garantir que o evento foi enviado
+            time.sleep(0.5)
             
         except Exception as exc:
             yield f"data: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"

@@ -51,6 +51,7 @@ const VideoPlayer = ({ video, onClose }) => {
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log('Evento SSE recebido:', data);
           
           if (data.status === 'downloading' || data.status === 'starting') {
             setDownloadProgress({
@@ -65,21 +66,29 @@ const VideoPlayer = ({ video, onClose }) => {
               ...prev, 
               status: 'processing', 
               percent: 100,
-              message: 'Processando... Juntando áudio e vídeo'
+              message: data.message || 'Processando... Juntando áudio e vídeo'
             }));
           } else if (data.status === 'completed') {
-            filename = data.filename || `${video.snippet.title.replace(/[^a-z0-9]/gi, '_')}.mp4`;
+            console.log('Download completado! Iniciando download do arquivo...');
+            const filename = data.filename || `${video.snippet.title.replace(/[^a-z0-9]/gi, '_')}.mp4`;
             setDownloadProgress(prev => ({ ...prev, status: 'completed', percent: 100 }));
             
             // Fazer download do arquivo após progresso completar
+            downloadCompleted = true;
+            eventSource.close();
+            
+            // Aguardar um pouco para garantir que o estado foi atualizado e então baixar
+            setTimeout(() => {
+              console.log('Chamando handleDownloadFile com filename:', filename);
+              handleDownloadFile(selectedQuality, filename);
+            }, 500);
+          } else if (data.status === 'error') {
+            console.error('Erro recebido via SSE:', data.error);
             eventSource.close();
             downloadCompleted = true;
-            
-            // Baixar arquivo normalmente
-            handleDownloadFile(selectedQuality, filename);
-          } else if (data.status === 'error') {
-            eventSource.close();
-            throw new Error(data.error || 'Erro ao baixar vídeo');
+            setDownloadError(data.error || 'Erro ao baixar vídeo');
+            setDownloading(false);
+            setDownloadProgress(null);
           }
         } catch (error) {
           console.error('Erro ao processar evento SSE:', error);
@@ -88,11 +97,29 @@ const VideoPlayer = ({ video, onClose }) => {
 
       eventSource.onerror = (error) => {
         console.error('Erro no EventSource:', error);
+        console.log('EventSource readyState:', eventSource.readyState);
+        
+        // Se o EventSource fechou (readyState === 2), pode ser que o download tenha completado
+        if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('EventSource fechado. Verificando se download completou...');
+          
+          // Aguardar um pouco e verificar se podemos baixar do cache
+          setTimeout(() => {
+            if (!downloadCompleted) {
+              console.log('Tentando baixar do cache...');
+              // Tentar baixar diretamente - o backend pode ter o arquivo em cache
+              handleDownloadFile(selectedQuality);
+            }
+          }, 1000);
+        }
+        
         eventSource.close();
         
         // Fallback: tentar download normal sem progresso
         if (!downloadCompleted) {
-          handleDownloadFallback();
+          setTimeout(() => {
+            handleDownloadFallback();
+          }, 2000);
         }
       };
 
@@ -115,27 +142,51 @@ const VideoPlayer = ({ video, onClose }) => {
 
   const handleDownloadFile = async (quality, filename) => {
     try {
+      console.log(`Baixando arquivo: videoId=${videoId}, quality=${quality}, filename=${filename || 'não fornecido'}`);
       const response = await fetch(`/api/download?videoId=${videoId}&quality=${quality}`);
       
       if (!response.ok) {
-        throw new Error('Erro ao baixar arquivo');
+        const errorText = await response.text();
+        console.error('Resposta de erro do servidor:', errorText);
+        throw new Error(`Erro ao baixar arquivo: ${response.status} ${response.statusText}`);
       }
 
+      // Obter filename do header Content-Disposition se não foi fornecido
+      let finalFilename = filename;
+      if (!finalFilename) {
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (filenameMatch && filenameMatch[1]) {
+            finalFilename = filenameMatch[1].replace(/['"]/g, '');
+          }
+        }
+      }
+      
+      // Fallback: usar título do vídeo
+      if (!finalFilename) {
+        finalFilename = `${video.snippet.title.replace(/[^a-z0-9]/gi, '_')}.mp4`;
+      }
+
+      console.log('Iniciando download do blob, filename:', finalFilename);
       const blob = await response.blob();
+      console.log('Blob recebido, tamanho:', blob.size, 'bytes');
+      
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename;
+      a.download = finalFilename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
+      console.log('Download iniciado no navegador');
       setDownloading(false);
       setDownloadProgress(null);
     } catch (error) {
       console.error('Erro ao baixar arquivo:', error);
-      setDownloadError('Erro ao baixar arquivo. Tente novamente.');
+      setDownloadError(`Erro ao baixar arquivo: ${error.message}. Tente novamente.`);
       setDownloading(false);
       setDownloadProgress(null);
     }
