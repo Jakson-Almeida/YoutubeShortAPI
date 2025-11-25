@@ -71,25 +71,82 @@ Para habilitar downloads funcionais, foi adicionado um backend em Python que uti
 
 ### 📦 Instalação:
 
-1. **Instale as dependências** (recomendado criar um ambiente virtual):
-```bash
-cd python-backend
-# opcional
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
+1. **Crie e ative o ambiente virtual**:
 
-pip install -r requirements.txt
-```
+   **No Windows (PowerShell):**
+   ```powershell
+   cd python-backend
+   # Crie o ambiente virtual (se ainda não foi criado)
+   python -m venv .venv
+   
+   # Ative o ambiente virtual
+   .\.venv\Scripts\Activate.ps1
+   ```
+   
+   ⚠️ **Se você receber um erro de política de execução no PowerShell**, execute este comando como Administrador primeiro:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+   
+   Depois, tente ativar novamente o ambiente virtual.
+   
+   **Alternativa no Windows (CMD):**
+   ```cmd
+   cd python-backend
+   python -m venv .venv
+   .venv\Scripts\activate.bat
+   ```
+   
+   **No macOS/Linux:**
+   ```bash
+   cd python-backend
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+   
+   **Verificação**: Após ativar, você verá `(.venv)` no início do seu prompt de comando.
 
-2. **Inicie o backend**:
-```bash
-python app.py
-```
+2. **Instale as dependências**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-O servidor rodará na porta `5000`. O frontend já está configurado para apontar para esse backend através da propriedade `proxy` em `package.json`.
+3. **Inicie o backend**:
+   ```bash
+   python app.py
+   ```
+   
+   O servidor iniciará na porta `5000`. Você verá uma mensagem como:
+   ```
+   * Running on http://127.0.0.1:5000
+   ```
+   
+   O frontend já está configurado para apontar para esse backend através da propriedade `proxy` em `package.json`.
+
+### 🔧 Troubleshooting (Windows):
+
+**Problema: "source" não é reconhecido**
+- ❌ **Errado**: `source .venv/bin/activate` (comando Linux/Mac)
+- ✅ **Correto (PowerShell)**: `.\.venv\Scripts\Activate.ps1`
+- ✅ **Correto (CMD)**: `.venv\Scripts\activate.bat`
+
+**Problema: "A execução de scripts está desabilitada neste sistema"**
+- Execute o PowerShell como **Administrador** e rode:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+- Ou use o CMD (Prompt de Comando) em vez do PowerShell:
+  ```cmd
+  .venv\Scripts\activate.bat
+  ```
+
+**Problema: "python não é reconhecido"**
+- Certifique-se de que o Python está instalado e adicionado ao PATH
+- Tente usar `py` em vez de `python`: `py -m venv .venv`
+
+**Verificar se o ambiente virtual está ativo:**
+- Você deve ver `(.venv)` no início do seu prompt
+- Execute `where python` (Windows) para verificar se aponta para o ambiente virtual
 
 ### 📚 Documentação Adicional:
 
