@@ -209,15 +209,19 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 'format': format_selector,
                 'merge_output_format': 'mp4',  # Garante que o merge seja MP4
                 'outtmpl': '%(title)s.%(ext)s',
-                'quiet': True,
-                'no_warnings': True,
+                'quiet': False,  # Habilitar logs para ver o processo de merge
+                'no_warnings': False,  # Mostrar avisos
                 'noplaylist': True,
                 'extract_flat': False,
+                'verbose': True,  # Modo verbose para ver tudo
             }
             
             # Adicionar hook de progresso se callback fornecido
             if progress_callback:
+                merge_started = False
+                
                 def progress_hook(d):
+                    nonlocal merge_started
                     try:
                         status = d.get('status', '')
                         if status == 'downloading':
@@ -237,11 +241,21 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                                     'speed_mbps': round(speed / (1024 * 1024), 2) if speed else 0,
                                 })
                         elif status == 'finished':
-                            app.logger.info("Progress hook: status='finished', download de segmentos concluído")
-                            # Manter status 'finished' como estava antes - o frontend trata isso
+                            app.logger.info("Progress hook: status='finished' - segmentos baixados")
+                            # Quando finished é chamado, o merge ainda vai começar
+                            merge_started = True
                             progress_callback({
-                                'status': 'finished',
+                                'status': 'processing',
                                 'percent': 100,
+                                'message': 'Processando... Juntando áudio e vídeo (isso pode demorar)'
+                            })
+                        elif status == 'postprocessor':
+                            app.logger.info("Progress hook: status='postprocessor' - merge iniciado")
+                            merge_started = True
+                            progress_callback({
+                                'status': 'processing',
+                                'percent': 100,
+                                'message': 'Processando... Juntando áudio e vídeo (isso pode demorar)'
                             })
                     except Exception as e:
                         app.logger.error("Erro no progress_hook: %s", str(e))
@@ -266,31 +280,68 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     app.logger.info("Iniciando ydl.download para %s", video_url)
                     try:
                         ydl.download([video_url])
-                        app.logger.info("ydl.download retornou com sucesso. Verificando arquivos em %s", tmpdir)
+                        app.logger.info("ydl.download retornou. Aguardando merge finalizar...")
+                        
+                        # Aguardar merge terminar - verificar se arquivo final aparece
+                        # O yt-dlp pode retornar antes do merge terminar completamente
+                        import time
+                        max_wait = 300  # 5 minutos máximo para merge
+                        wait_start = time.time()
+                        final_mp4_files = []
+                        
+                        while time.time() - wait_start < max_wait:
+                            time.sleep(1)  # Verificar a cada 1 segundo
+                            all_files = os.listdir(tmpdir)
+                            final_mp4_files = [f for f in all_files 
+                                              if f.endswith('.mp4') 
+                                              and os.path.isfile(os.path.join(tmpdir, f))
+                                              and not f.endswith(('.f137.mp4', '.f140.m4a'))]  # Excluir arquivos temporários
+                            
+                            if final_mp4_files:
+                                app.logger.info("Arquivo final encontrado: %s", final_mp4_files[0])
+                                # Aguardar mais 2 segundos para garantir que merge terminou
+                                time.sleep(2)
+                                break
+                            
+                            # Log a cada 10 segundos
+                            elapsed = int(time.time() - wait_start)
+                            if elapsed % 10 == 0:
+                                app.logger.info("Aguardando merge finalizar... (%d segundos)", elapsed)
+                        
+                        if not final_mp4_files:
+                            app.logger.warning("Timeout aguardando merge. Listando todos os arquivos: %s", os.listdir(tmpdir))
+                        
                     except Exception as e:
                         app.logger.error("Erro durante ydl.download: %s", str(e))
                         import traceback
                         app.logger.error(traceback.format_exc())
                         raise
                     
-                    # Encontrar o arquivo baixado (pode ser .mp4, .webm, .mkv, etc)
+                    # Encontrar o arquivo baixado
                     app.logger.info("Listando arquivos em %s", tmpdir)
                     all_files = os.listdir(tmpdir)
                     app.logger.info("Arquivos encontrados: %s", all_files)
                     
-                    downloaded_files = [f for f in all_files 
-                                       if os.path.isfile(os.path.join(tmpdir, f)) 
-                                       and f.endswith(('.mp4', '.webm', '.mkv', '.m4a'))]
-                    app.logger.info("Arquivos de vídeo/áudio filtrados: %s", downloaded_files)
-                    
-                    if not downloaded_files:
-                        app.logger.warning("Nenhum arquivo baixado encontrado em %s. Arquivos totais: %s", tmpdir, all_files)
-                        continue
-                    
-                    # Priorizar arquivos MP4
-                    mp4_files = [f for f in downloaded_files if f.endswith('.mp4')]
-                    downloaded_file = os.path.join(tmpdir, mp4_files[0] if mp4_files else downloaded_files[0])
-                    app.logger.info("Arquivo selecionado para leitura: %s", downloaded_file)
+                    # Se já encontramos arquivo final durante a espera, usar ele
+                    if final_mp4_files:
+                        downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
+                        app.logger.info("Usando arquivo final encontrado: %s", downloaded_file)
+                    else:
+                        # Fallback: procurar todos os arquivos de vídeo/áudio
+                        downloaded_files = [f for f in all_files 
+                                           if os.path.isfile(os.path.join(tmpdir, f)) 
+                                           and f.endswith(('.mp4', '.webm', '.mkv', '.m4a'))
+                                           and not f.endswith(('.f137.mp4', '.f140.m4a', '.f299.mp4'))]  # Excluir temporários
+                        app.logger.info("Arquivos de vídeo/áudio filtrados: %s", downloaded_files)
+                        
+                        if not downloaded_files:
+                            app.logger.warning("Nenhum arquivo baixado encontrado em %s. Arquivos totais: %s", tmpdir, all_files)
+                            continue
+                        
+                        # Priorizar arquivos MP4
+                        mp4_files = [f for f in downloaded_files if f.endswith('.mp4')]
+                        downloaded_file = os.path.join(tmpdir, mp4_files[0] if mp4_files else downloaded_files[0])
+                        app.logger.info("Arquivo selecionado para leitura: %s", downloaded_file)
                     
                     # Ler o arquivo para o buffer
                     file_size = os.path.getsize(downloaded_file)
