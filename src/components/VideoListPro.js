@@ -42,6 +42,23 @@ const VideoListPro = ({
     });
   }, [videos, hideDownloaded, selectable]);
 
+  // Remover vídeos baixados da seleção quando o filtro é ativado ou quando vídeos são filtrados
+  useEffect(() => {
+    if (hideDownloaded && selectable) {
+      setCheckedVideos(prev => {
+        // Remover vídeos que não estão na lista filtrada (foram ocultados)
+        const filteredVideoIds = new Set(filteredVideos.map(v => v.id.videoId || v.id));
+        const cleaned = Array.from(prev).filter(videoId => filteredVideoIds.has(videoId));
+        
+        // Se houve mudança, retornar novo Set, caso contrário retornar o mesmo
+        if (cleaned.length !== prev.size) {
+          return new Set(cleaned);
+        }
+        return prev;
+      });
+    }
+  }, [hideDownloaded, selectable, filteredVideos]);
+
   const handleCheckChange = (videoId, isChecked) => {
     setCheckedVideos(prev => {
       const newSet = new Set(prev);
