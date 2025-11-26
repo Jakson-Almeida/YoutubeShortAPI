@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Video/Play icon -->
+  <g transform="translate(10, 10)">
+    <rect x="0" y="0" width="40" height="40" rx="8" fill="url(#logoGrad)"/>
+    <polygon points="12,8 12,32 28,20" fill="white"/>
+  </g>
+  
+  <!-- Download arrow -->
+  <g transform="translate(15, 32)">
+    <path d="M 20 12 L 20 22 M 16 18 L 20 22 L 24 18" 
+          stroke="white" 
+          stroke-width="2.5" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+  </g>
+  
+  <!-- Text: "Shorts" -->
+  <text x="60" y="35" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#333">
+    YouTube Shorts
+  </text>
+</svg>
+

@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import '../App.css';
 import AdvancedSearchBar from '../components/AdvancedSearchBar';
 import VideoList from '../components/VideoList';
+import VideoListPro from '../components/VideoListPro';
 import VideoPlayer from '../components/VideoPlayer';
 import ChannelList from '../components/ChannelList';
+import Logo from '../components/Logo';
 import { Link } from 'react-router-dom';
+import { markVideoAsDownloaded } from '../utils/downloadHistory';
 
 function ProPage() {
   const [videos, setVideos] = useState([]);
@@ -13,6 +16,14 @@ function ProPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [currentSearchType, setCurrentSearchType] = useState(null); // 'videos' ou 'channels'
+  const [advancedOptions, setAdvancedOptions] = useState({
+    allowMultipleDownloads: false,
+    saveVideo: true,
+    saveDescription: false,
+    saveLinks: false,
+    linkFilter: ''
+  });
+  const [downloadingVideos, setDownloadingVideos] = useState(new Set()); // Set de videoIds em download
 
   const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
 
@@ -248,13 +259,112 @@ function ProPage() {
     }
   };
 
+  const handleBatchDownload = async (videoIds) => {
+    if (!videoIds || videoIds.length === 0) return;
+
+    // Adicionar vídeos ao conjunto de downloads
+    setDownloadingVideos(new Set(videoIds));
+    setError(null);
+
+    try {
+      // Fazer download de cada vídeo individualmente em paralelo
+      const downloadPromises = videoIds.map(async (videoId) => {
+        try {
+          const video = videos.find(v => (v.id.videoId || v.id) === videoId);
+          if (!video) {
+            throw new Error(`Vídeo ${videoId} não encontrado`);
+          }
+
+          // Chamar endpoint de download individual com opções
+          const params = new URLSearchParams({
+            videoId: videoId,
+            quality: 'best',
+            saveVideo: advancedOptions.saveVideo ? 'true' : 'false',
+            saveDescription: advancedOptions.saveDescription ? 'true' : 'false',
+            saveLinks: advancedOptions.saveLinks ? 'true' : 'false',
+            linkFilter: advancedOptions.linkFilter || ''
+          });
+
+          const response = await fetch(`/api/download-with-metadata?${params.toString()}`);
+          
+          if (!response.ok) {
+            throw new Error(`Erro ao baixar vídeo ${videoId}`);
+          }
+
+          // Baixar arquivo (ZIP se tem metadados, MP4 se só vídeo)
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          
+          // Obter nome do arquivo do header
+          const contentDisposition = response.headers.get('Content-Disposition');
+          let filename = `video_${videoId}.mp4`;
+          if (contentDisposition) {
+            const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (match && match[1]) {
+              filename = match[1].replace(/['"]/g, '');
+            }
+          }
+          
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+
+          // Marcar vídeo como baixado no localStorage
+          if (video) {
+            markVideoAsDownloaded(videoId, {
+              title: video.snippet.title,
+              channelTitle: video.snippet.channelTitle,
+              thumbnail: video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url,
+              quality: 'best'
+            });
+            
+            // Disparar evento para atualizar cards
+            window.dispatchEvent(new CustomEvent('videoDownloaded', { 
+              detail: { videoId } 
+            }));
+          }
+
+          return { videoId, success: true };
+        } catch (err) {
+          console.error(`Erro ao baixar vídeo ${videoId}:`, err);
+          return { videoId, success: false, error: err.message };
+        }
+      });
+
+      // Aguardar todos os downloads (paralelos)
+      const results = await Promise.all(downloadPromises);
+      
+      // Verificar se houve erros
+      const errors = results.filter(r => !r.success);
+      if (errors.length > 0) {
+        console.warn(`${errors.length} vídeo(s) falharam ao baixar:`, errors);
+        setError(`${errors.length} de ${videoIds.length} vídeo(s) falharam ao baixar. Verifique o console para detalhes.`);
+      }
+
+    } catch (err) {
+      setError(`Erro durante downloads: ${err.message}`);
+    } finally {
+      // Remover vídeos do conjunto de downloads
+      setDownloadingVideos(new Set());
+    }
+  };
+
   return (
     <div className="App">
       <header className="app-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div>
-            <h1>⭐ YouTube Shorts Pro</h1>
-            <p>Busca avançada e navegação de Shorts</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <Logo size="medium" showText={false} />
+            <div>
+              <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span>⭐ YouTube Shorts Pro</span>
+              </h1>
+              <p style={{ margin: '5px 0 0 0' }}>Busca avançada e navegação de Shorts</p>
+            </div>
           </div>
           <Link to="/" className="home-link" style={{ 
             padding: '10px 20px', 
@@ -274,6 +384,8 @@ function ProPage() {
           onSearch={handleSearchVideos}
           onSearchChannels={handleSearchChannels}
           loading={loading}
+          advancedOptions={advancedOptions}
+          onAdvancedOptionsChange={setAdvancedOptions}
         />
 
         {error && (
@@ -301,11 +413,22 @@ function ProPage() {
             )}
             
             {currentSearchType === 'videos' && videos.length > 0 && (
-              <VideoList
-                videos={videos}
-                onVideoSelect={handleVideoSelect}
-                selectedVideo={selectedVideo}
-              />
+              advancedOptions.allowMultipleDownloads ? (
+                <VideoListPro
+                  videos={videos}
+                  onVideoSelect={handleVideoSelect}
+                  selectedVideo={selectedVideo}
+                  selectable={true}
+                  onBatchDownload={handleBatchDownload}
+                  downloadingVideos={downloadingVideos}
+                />
+              ) : (
+                <VideoList
+                  videos={videos}
+                  onVideoSelect={handleVideoSelect}
+                  selectedVideo={selectedVideo}
+                />
+              )
             )}
 
             {!loading && currentSearchType === null && (

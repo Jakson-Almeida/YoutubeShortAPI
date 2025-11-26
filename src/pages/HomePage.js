@@ -3,6 +3,7 @@ import '../App.css';
 import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 import VideoPlayer from '../components/VideoPlayer';
+import Logo from '../components/Logo';
 import { Link } from 'react-router-dom';
 
 function HomePage() {
@@ -57,9 +58,14 @@ function HomePage() {
     <div className="App">
       <header className="app-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div>
-            <h1>🎬 YouTube Shorts Downloader</h1>
-            <p>Pesquise, visualize e baixe seus Shorts favoritos</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <Logo size="medium" showText={false} />
+            <div>
+              <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span>YouTube Shorts Downloader</span>
+              </h1>
+              <p style={{ margin: '5px 0 0 0' }}>Pesquise, visualize e baixe seus Shorts favoritos</p>
+            </div>
           </div>
           <Link to="/pro" className="pro-link" style={{ 
             padding: '10px 20px', 

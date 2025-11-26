@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
 import './AdvancedSearchBar.css';
 
-const AdvancedSearchBar = ({ onSearch, onSearchChannels, loading }) => {
+const AdvancedSearchBar = ({ 
+  onSearch, 
+  onSearchChannels, 
+  loading,
+  advancedOptions = {},
+  onAdvancedOptionsChange 
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [channelId, setChannelId] = useState('');
   const [searchType, setSearchType] = useState('videos'); // 'videos' ou 'channels'
   const [orderBy, setOrderBy] = useState('date'); // 'date' (recentes) ou 'date:asc' (antigos)
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const extractChannelIdFromUrl = (url) => {
     if (!url) return '';
@@ -132,6 +139,107 @@ const AdvancedSearchBar = ({ onSearch, onSearchChannels, loading }) => {
         >
           {loading ? '⏳' : '🔍'} Buscar
         </button>
+
+        {searchType === 'videos' && (
+          <div className="advanced-options-section">
+            <button
+              type="button"
+              className="advanced-toggle-button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+            >
+              <span>⚙️ Opções Avançadas</span>
+              <span className={`toggle-arrow ${showAdvanced ? 'open' : ''}`}>▼</span>
+            </button>
+
+            {showAdvanced && (
+              <div className="advanced-options-content">
+                <div className="option-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={advancedOptions.allowMultipleDownloads || false}
+                      onChange={(e) => onAdvancedOptionsChange?.({ 
+                        ...advancedOptions, 
+                        allowMultipleDownloads: e.target.checked 
+                      })}
+                      disabled={loading}
+                    />
+                    <span>Permitir múltiplos downloads</span>
+                  </label>
+                </div>
+
+                {advancedOptions.allowMultipleDownloads && (
+                  <>
+                    <div className="option-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={advancedOptions.saveVideo !== false}
+                          onChange={(e) => onAdvancedOptionsChange?.({ 
+                            ...advancedOptions, 
+                            saveVideo: e.target.checked 
+                          })}
+                          disabled={loading}
+                        />
+                        <span>Salvar vídeo</span>
+                      </label>
+                    </div>
+
+                    <div className="option-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={advancedOptions.saveDescription || false}
+                          onChange={(e) => onAdvancedOptionsChange?.({ 
+                            ...advancedOptions, 
+                            saveDescription: e.target.checked 
+                          })}
+                          disabled={loading}
+                        />
+                        <span>Salvar descrição</span>
+                      </label>
+                    </div>
+
+                    <div className="option-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={advancedOptions.saveLinks || false}
+                          onChange={(e) => onAdvancedOptionsChange?.({ 
+                            ...advancedOptions, 
+                            saveLinks: e.target.checked 
+                          })}
+                          disabled={loading}
+                        />
+                        <span>Salvar links</span>
+                      </label>
+                    </div>
+
+                    {advancedOptions.saveLinks && (
+                      <div className="option-group">
+                        <label className="input-label">
+                          Filtrar links por termo (opcional):
+                          <input
+                            type="text"
+                            value={advancedOptions.linkFilter || ''}
+                            onChange={(e) => onAdvancedOptionsChange?.({ 
+                              ...advancedOptions, 
+                              linkFilter: e.target.value 
+                            })}
+                            placeholder="Ex: shopee, amazon, amzn.to"
+                            className="filter-input"
+                            disabled={loading}
+                          />
+                          <small>URLs devem conter este termo para serem incluídas</small>
+                        </label>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </form>
     </div>
   );

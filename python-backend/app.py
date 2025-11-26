@@ -2,6 +2,8 @@ import os
 import re
 import tempfile
 from io import BytesIO
+import zipfile
+from datetime import datetime
 
 from urllib.error import HTTPError
 
@@ -39,6 +41,101 @@ def slugify(value: str) -> str:
     # limitar tamanho do arquivo e evitar string vazia
     safe = safe.strip("_") or "video"
     return safe[:80]
+
+
+def extract_product_links(description: str, link_filter: str = None) -> list:
+    """
+    Extrai links de produtos da descrição do vídeo.
+    
+    Args:
+        description: Descrição completa do vídeo
+        link_filter: Termo que a URL deve conter para ser incluída (opcional)
+    
+    Returns:
+        Lista de URLs encontradas
+    """
+    if not description:
+        return []
+    
+    # Padrões comuns de URLs de produtos/afiliados
+    patterns = [
+        r'https?://(?:www\.)?(?:shopee|amazon|aliexpress|magazineluiza|mercadolivre|americanas|submarino|shoptime)\.(?:com\.br|com)/[^\s\)]+',
+        r'https?://(?:amzn\.to|bit\.ly|t\.co|short\.link|tinyurl)/[^\s\)]+',
+        r'https?://[^\s\)]+(?:shopee|amazon|aliexpress|magazineluiza|mercadolivre)[^\s\)]*',
+    ]
+    
+    links = set()
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, description, re.IGNORECASE)
+        for match in matches:
+            # Limpar URL (remover caracteres finais indesejados)
+            url = match.rstrip('.,;:!?)]}')
+            
+            # Aplicar filtro se fornecido
+            if link_filter and link_filter.strip():
+                if link_filter.lower() not in url.lower():
+                    continue
+            
+            links.add(url)
+    
+    return sorted(list(links))
+
+
+def create_video_package(video_buffer: BytesIO, video_filename: str, metadata: dict, 
+                         save_video: bool = True, save_description: bool = False, 
+                         save_links: bool = False) -> BytesIO:
+    """
+    Cria um pacote ZIP com vídeo e metadados, ou retorna apenas o buffer do vídeo.
+    
+    Args:
+        video_buffer: Buffer do vídeo baixado
+        video_filename: Nome do arquivo de vídeo
+        metadata: Dicionário com metadados (description, links, title, etc.)
+        save_video: Se deve incluir o vídeo
+        save_description: Se deve incluir descrição
+        save_links: Se deve incluir links
+    
+    Returns:
+        BytesIO com ZIP ou vídeo direto
+    """
+    # Se não há metadados para salvar, retornar vídeo direto
+    if not save_description and not save_links:
+        return video_buffer
+    
+    # Criar ZIP com metadados
+    zip_buffer = BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Adicionar vídeo se solicitado
+        if save_video:
+            video_buffer.seek(0)
+            zip_file.writestr(video_filename, video_buffer.read())
+        
+        # Preparar JSON com metadados
+        metadata_json = {}
+        
+        if save_description and metadata.get('description'):
+            metadata_json['description'] = metadata['description']
+        
+        if save_links and metadata.get('links'):
+            metadata_json['links'] = metadata['links']
+        
+        # Adicionar outros metadados úteis
+        if metadata.get('title'):
+            metadata_json['title'] = metadata['title']
+        if metadata.get('channel'):
+            metadata_json['channel'] = metadata['channel']
+        if metadata.get('published_at'):
+            metadata_json['published_at'] = metadata['published_at']
+        
+        # Salvar JSON
+        if metadata_json:
+            json_content = json.dumps(metadata_json, ensure_ascii=False, indent=2)
+            zip_file.writestr('metadata.json', json_content.encode('utf-8'))
+    
+    zip_buffer.seek(0)
+    return zip_buffer
 
 
 @app.get("/api/health")
@@ -863,6 +960,173 @@ def download_with_progress(video_id: str, quality: str):
             pass
     
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
+@app.get("/api/download-with-metadata")
+def download_with_metadata():
+    """
+    Endpoint para download de vídeo com opções de metadados.
+    
+    Parâmetros:
+    - videoId: ID do vídeo (obrigatório)
+    - quality: format_id ou 'best' para melhor qualidade (opcional, padrão: 'best')
+    - saveVideo: 'true' ou 'false' - se deve salvar o vídeo (padrão: 'true')
+    - saveDescription: 'true' ou 'false' - se deve salvar descrição (padrão: 'false')
+    - saveLinks: 'true' ou 'false' - se deve salvar links (padrão: 'false')
+    - linkFilter: Termo que a URL deve conter para ser incluída (opcional)
+    
+    Retorna:
+    - Se apenas vídeo: arquivo MP4 direto
+    - Se tem metadados: arquivo ZIP contendo vídeo + metadata.json
+    """
+    video_id = request.args.get("videoId")
+    quality = request.args.get("quality", "best")
+    save_video = request.args.get("saveVideo", "true").lower() == "true"
+    save_description = request.args.get("saveDescription", "false").lower() == "true"
+    save_links = request.args.get("saveLinks", "false").lower() == "true"
+    link_filter = request.args.get("linkFilter", "").strip()
+    
+    if not video_id:
+        return jsonify({"error": "ID do video nao fornecido"}), 400
+    
+    if not YT_DLP_AVAILABLE:
+        return jsonify({"error": "yt-dlp não está disponível"}), 503
+    
+    try:
+        app.logger.info("Download com metadados: videoId=%s, saveVideo=%s, saveDescription=%s, saveLinks=%s", 
+                       video_id, save_video, save_description, save_links)
+        
+        # URLs candidatas para o vídeo
+        candidate_urls = [
+            f"https://www.youtube.com/watch?v={video_id}",
+            f"https://www.youtube.com/shorts/{video_id}",
+            f"https://youtu.be/{video_id}",
+        ]
+        
+        video_info = None
+        video_url = None
+        video_buffer = None
+        video_filename = None
+        
+        # Obter informações do vídeo (sempre necessário para metadados)
+        for url in candidate_urls:
+            try:
+                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+                    # Obter informações do vídeo
+                    video_info = ydl.extract_info(url, download=False)
+                    
+                    if video_info:
+                        video_url = url
+                        break
+            except Exception as e:
+                app.logger.debug("Tentativa falhou para %s: %s", url, str(e))
+                continue
+        
+        if not video_info:
+            return jsonify({"error": "Não foi possível obter informações do vídeo"}), 404
+        
+        # Baixar o vídeo se solicitado
+        if save_video:
+            format_selector = get_format_selector(quality)
+            ydl_opts = {
+                'format': format_selector,
+                'merge_output_format': 'mp4',
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': True,
+            }
+            
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ydl_opts['outtmpl'] = os.path.join(tmpdir, '%(title)s.%(ext)s')
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([video_url])
+                    
+                    # Encontrar arquivo baixado
+                    all_files = os.listdir(tmpdir)
+                    final_files = [
+                        f for f in all_files 
+                        if f.endswith('.mp4') 
+                        and os.path.isfile(os.path.join(tmpdir, f))
+                        and not re.search(r'\.f\d+\.(mp4|m4a)$', f)
+                        and not f.endswith('.temp.mp4')
+                    ]
+                    
+                    if final_files:
+                        downloaded_file = os.path.join(tmpdir, final_files[0])
+                        video_buffer = BytesIO()
+                        with open(downloaded_file, 'rb') as f:
+                            video_buffer.write(f.read())
+                        video_buffer.seek(0)
+                        video_filename = slugify(video_info.get('title', 'video')) + '.mp4'
+                    else:
+                        # Fallback: procurar qualquer arquivo MP4
+                        mp4_files = [f for f in all_files if f.endswith('.mp4')]
+                        if mp4_files:
+                            downloaded_file = os.path.join(tmpdir, mp4_files[0])
+                            video_buffer = BytesIO()
+                            with open(downloaded_file, 'rb') as f:
+                                video_buffer.write(f.read())
+                            video_buffer.seek(0)
+                            video_filename = slugify(video_info.get('title', 'video')) + '.mp4'
+        
+        # Se não baixou vídeo e não quer metadados, retornar erro
+        if not save_video and not save_description and not save_links:
+            return jsonify({"error": "Nenhuma opção de salvamento selecionada"}), 400
+        
+        # Preparar metadados
+        metadata = {
+            'title': video_info.get('title', ''),
+            'channel': video_info.get('channel', ''),
+            'published_at': video_info.get('upload_date', ''),
+            'description': '',
+            'links': []
+        }
+        
+        # Extrair descrição se solicitado
+        if save_description:
+            metadata['description'] = video_info.get('description', '')
+        
+        # Extrair links se solicitado
+        if save_links and metadata.get('description'):
+            links = extract_product_links(metadata['description'], link_filter)
+            metadata['links'] = links
+        
+        # Criar pacote (ZIP se tem metadados, vídeo direto caso contrário)
+        if save_description or save_links:
+            # Criar ZIP com vídeo (se disponível) e metadados
+            package_buffer = create_video_package(
+                video_buffer if (save_video and video_buffer) else BytesIO(),
+                video_filename or 'video.mp4',
+                metadata,
+                save_video and video_buffer is not None,
+                save_description,
+                save_links
+            )
+            
+            package_filename = slugify(video_info.get('title', 'video')) + '.zip'
+            
+            return send_file(
+                package_buffer,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name=package_filename
+            )
+        else:
+            # Retornar vídeo direto (sem metadados)
+            if not video_buffer:
+                return jsonify({"error": "Nenhum conteúdo para baixar"}), 400
+            
+            return send_file(
+                video_buffer,
+                mimetype='video/mp4',
+                as_attachment=True,
+                download_name=video_filename or f'video_{video_id}.mp4'
+            )
+            
+    except Exception as e:
+        app.logger.exception("Erro ao baixar vídeo com metadados: %s", str(e))
+        return jsonify({"error": f"Erro ao processar download: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

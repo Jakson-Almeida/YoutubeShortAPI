@@ -1,0 +1,117 @@
+.video-list-pro-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.video-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.video-list-title {
+  font-size: 1.5rem;
+  color: #333;
+  margin: 0;
+}
+
+.batch-controls {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.batch-select-button {
+  background: white;
+  border: 2px solid #667eea;
+  color: #667eea;
+  border-radius: 8px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.batch-select-button:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+}
+
+.batch-select-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.batch-download-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.batch-download-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.batch-download-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 20px 0;
+}
+
+.no-videos {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.no-videos p {
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .video-list-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .batch-controls {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .batch-select-button,
+  .batch-download-button {
+    width: 100%;
+  }
+
+  .video-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .video-list-pro-container {
+    padding: 15px;
+  }
+}
+

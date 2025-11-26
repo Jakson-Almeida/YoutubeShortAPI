@@ -114,6 +114,117 @@
   cursor: not-allowed;
 }
 
+.advanced-options-section {
+  border-top: 2px solid #f0f0f0;
+  padding-top: 15px;
+  margin-top: 10px;
+}
+
+.advanced-toggle-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f5f5f5;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px 15px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.advanced-toggle-button:hover {
+  background: #eeeeee;
+  border-color: #667eea;
+}
+
+.toggle-arrow {
+  transition: transform 0.2s;
+  font-size: 0.8rem;
+  color: #667eea;
+}
+
+.toggle-arrow.open {
+  transform: rotate(180deg);
+}
+
+.advanced-options-content {
+  margin-top: 15px;
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #333;
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.input-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.95rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.filter-input {
+  border: 2px solid #e0e0e0;
+  outline: none;
+  padding: 10px 15px;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.filter-input:focus {
+  border-color: #667eea;
+}
+
+.input-label small {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: normal;
+  margin-top: -5px;
+}
+
 @media (max-width: 768px) {
   .advanced-search-form {
     padding: 15px;
@@ -133,6 +244,10 @@
   .advanced-search-button {
     width: 100%;
     padding: 12px 20px;
+  }
+
+  .advanced-options-content {
+    padding: 12px;
   }
 }
 

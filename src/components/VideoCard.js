@@ -2,13 +2,28 @@ import React, { useState, useEffect } from 'react';
 import './VideoCard.css';
 import { isVideoDownloaded } from '../utils/downloadHistory';
 
-const VideoCard = ({ video, onClick, isSelected }) => {
+const VideoCard = ({ 
+  video, 
+  onClick, 
+  isSelected,
+  selectable = false,
+  isChecked = false,
+  onCheckChange,
+  isDownloading = false
+}) => {
   const thumbnail = video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url;
   const title = video.snippet.title;
   const channel = video.snippet.channelTitle;
   const publishedAt = new Date(video.snippet.publishedAt).toLocaleDateString('pt-BR');
   const videoId = video.id.videoId || video.id;
   const [downloaded, setDownloaded] = useState(isVideoDownloaded(videoId));
+
+  const handleCheckboxClick = (e) => {
+    e.stopPropagation(); // Impede que o onClick do card seja disparado
+    if (onCheckChange) {
+      onCheckChange(videoId, !isChecked);
+    }
+  };
 
   // Escutar eventos de download para atualizar o estado
   useEffect(() => {
@@ -30,19 +45,38 @@ const VideoCard = ({ video, onClick, isSelected }) => {
 
   return (
     <div 
-      className={`video-card ${isSelected ? 'selected' : ''} ${downloaded ? 'downloaded' : ''}`}
-      onClick={onClick}
+      className={`video-card ${isSelected ? 'selected' : ''} ${downloaded ? 'downloaded' : ''} ${isChecked ? 'checked' : ''} ${isDownloading ? 'downloading' : ''}`}
+      onClick={selectable && !isDownloading ? undefined : onClick}
     >
+      {selectable && (
+        <div className="video-checkbox-container" onClick={handleCheckboxClick}>
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={handleCheckboxClick}
+            disabled={isDownloading}
+            className="video-checkbox"
+          />
+        </div>
+      )}
+      
       <div className="video-thumbnail">
         <img src={thumbnail} alt={title} />
-        {downloaded && (
+        {downloaded && !isDownloading && (
           <div className="downloaded-badge" title="Vídeo já baixado">
             ✓
           </div>
         )}
-        <div className="play-overlay">
-          <span className="play-icon">▶</span>
-        </div>
+        {isDownloading && (
+          <div className="downloading-badge" title="Baixando...">
+            ⏳
+          </div>
+        )}
+        {!selectable && (
+          <div className="play-overlay">
+            <span className="play-icon">▶</span>
+          </div>
+        )}
       </div>
       <div className="video-info">
         <h3 className="video-title" title={title}>
