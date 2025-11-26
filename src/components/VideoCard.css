@@ -5,6 +5,7 @@
   cursor: pointer;
   transition: transform 0.3s, box-shadow 0.3s;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  position: relative; /* Necessário para posicionamento absoluto do checkbox */
 }
 
 .video-card:hover {
@@ -53,11 +54,17 @@
   border-radius: 6px;
   padding: 5px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  /* SEMPRE visível quando selectable está ativo */
+  /* SEMPRE visível quando selectable está ativo - NUNCA esconder */
   opacity: 1 !important;
-  display: block !important;
+  display: flex !important;
   visibility: visible !important;
-  transition: opacity 0.2s, transform 0.2s, background 0.2s, box-shadow 0.2s;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+  pointer-events: auto;
+  /* Garantir que está sempre visível */
+  min-width: 34px;
+  min-height: 34px;
 }
 
 /* Quando o vídeo está MARCADO, sempre visível e destacado */
@@ -70,13 +77,28 @@
   border: 2px solid rgba(255, 255, 255, 0.8);
   /* Garantir que quando marcado está SEMPRE visível */
   visibility: visible !important;
-  display: block !important;
+  display: flex !important;
 }
 
 /* Garantir que o container não aparece quando selectable está desativado */
 .video-card:not(.selectable) .video-checkbox-container {
   display: none !important;
   visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Garantir que NUNCA aparece um checkbox solto/flutuando fora dos cards */
+/* Qualquer checkbox-container que não esteja dentro de um video-card.selectable deve ser escondido */
+/* Primeiro, garantir que só aparece dentro de video-card.selectable */
+body > .video-checkbox-container,
+body .App > .video-checkbox-container,
+body .app-container > .video-checkbox-container,
+body .video-list-pro-container > .video-checkbox-container,
+body .video-grid > .video-checkbox-container {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  position: static !important;
 }
 
 .video-checkbox {
