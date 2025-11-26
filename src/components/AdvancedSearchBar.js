@@ -174,6 +174,22 @@ const AdvancedSearchBar = ({
                       <label className="checkbox-label">
                         <input
                           type="checkbox"
+                          checked={advancedOptions.hideDownloaded || false}
+                          onChange={(e) => onAdvancedOptionsChange?.({ 
+                            ...advancedOptions, 
+                            hideDownloaded: e.target.checked 
+                          })}
+                          disabled={loading}
+                        />
+                        <span>Ocultar vídeos já baixados</span>
+                      </label>
+                      <small className="option-hint">Filtra automaticamente vídeos que você já baixou anteriormente</small>
+                    </div>
+
+                    <div className="option-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
                           checked={advancedOptions.saveVideo !== false}
                           onChange={(e) => onAdvancedOptionsChange?.({ 
                             ...advancedOptions, 

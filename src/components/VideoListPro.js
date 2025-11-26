@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './VideoListPro.css';
 import VideoCard from './VideoCard';
+import { isVideoDownloaded } from '../utils/downloadHistory';
 
 const VideoListPro = ({ 
   videos, 
@@ -8,9 +9,38 @@ const VideoListPro = ({
   selectedVideo,
   selectable = false,
   onBatchDownload,
-  downloadingVideos = new Set() // Set de videoIds que estão sendo baixados
+  downloadingVideos = new Set(), // Set de videoIds que estão sendo baixados
+  hideDownloaded = false // Ocultar vídeos já baixados
 }) => {
   const [checkedVideos, setCheckedVideos] = useState(new Set());
+
+  // Escutar eventos de download para remover vídeos baixados da seleção
+  useEffect(() => {
+    if (!hideDownloaded) return;
+
+    const handleVideoDownloaded = () => {
+      // Remover vídeo baixado da seleção se estiver marcado
+      setCheckedVideos(prev => {
+        const filtered = Array.from(prev).filter(videoId => !isVideoDownloaded(videoId));
+        return new Set(filtered);
+      });
+    };
+
+    window.addEventListener('videoDownloaded', handleVideoDownloaded);
+    return () => window.removeEventListener('videoDownloaded', handleVideoDownloaded);
+  }, [hideDownloaded]);
+
+  // Filtrar vídeos já baixados se a opção estiver ativa
+  const filteredVideos = useMemo(() => {
+    if (!hideDownloaded || !selectable) {
+      return videos;
+    }
+    
+    return videos.filter(video => {
+      const videoId = video.id.videoId || video.id;
+      return !isVideoDownloaded(videoId);
+    });
+  }, [videos, hideDownloaded, selectable]);
 
   const handleCheckChange = (videoId, isChecked) => {
     setCheckedVideos(prev => {
@@ -25,12 +55,12 @@ const VideoListPro = ({
   };
 
   const handleSelectAll = () => {
-    if (checkedVideos.size === videos.length) {
+    if (checkedVideos.size === filteredVideos.length) {
       // Desmarcar todos
       setCheckedVideos(new Set());
     } else {
-      // Marcar todos
-      setCheckedVideos(new Set(videos.map(v => v.id.videoId || v.id)));
+      // Marcar todos (apenas os vídeos filtrados)
+      setCheckedVideos(new Set(filteredVideos.map(v => v.id.videoId || v.id)));
     }
   };
 
@@ -42,10 +72,20 @@ const VideoListPro = ({
     }
   };
 
-  if (videos.length === 0) {
+  // Contar vídeos ocultos
+  const hiddenCount = hideDownloaded && selectable 
+    ? videos.length - filteredVideos.length 
+    : 0;
+
+  if (filteredVideos.length === 0) {
     return (
       <div className="no-videos">
-        <p>🔍 Nenhum vídeo encontrado. Tente pesquisar por "shorts" ou qualquer outro termo.</p>
+        <p>🔍 {videos.length === 0 
+          ? 'Nenhum vídeo encontrado. Tente pesquisar por "shorts" ou qualquer outro termo.'
+          : hideDownloaded && hiddenCount > 0
+            ? `Todos os ${videos.length} vídeo${videos.length !== 1 ? 's' : ''} encontrado${videos.length !== 1 ? 's' : ''} já foram baixados. Desative "Ocultar vídeos já baixados" para vê-los.`
+            : 'Nenhum vídeo encontrado.'
+        }</p>
       </div>
     );
   }
@@ -53,18 +93,25 @@ const VideoListPro = ({
   return (
     <div className="video-list-pro-container">
       <div className="video-list-header">
-        <h2 className="video-list-title">
-          {videos.length} vídeo{videos.length !== 1 ? 's' : ''} encontrado{videos.length !== 1 ? 's' : ''}
-        </h2>
+        <div className="video-list-title-section">
+          <h2 className="video-list-title">
+            {filteredVideos.length} vídeo{filteredVideos.length !== 1 ? 's' : ''} disponível{filteredVideos.length !== 1 ? 'is' : ''}
+            {hiddenCount > 0 && (
+              <span className="hidden-count"> ({hiddenCount} já baixado{hiddenCount !== 1 ? 's' : ''} oculto{hiddenCount !== 1 ? 's' : ''})</span>
+            )}
+          </h2>
+        </div>
         
         {selectable && (
           <div className="batch-controls">
             <button
               className="batch-select-button"
               onClick={handleSelectAll}
-              disabled={videos.length === 0}
+              disabled={filteredVideos.length === 0}
             >
-              {checkedVideos.size === videos.length ? '☐ Desmarcar Todos' : '☑ Selecionar Todos'}
+              {checkedVideos.size === filteredVideos.length && filteredVideos.length > 0 
+                ? '☐ Desmarcar Todos' 
+                : '☑ Selecionar Todos'}
             </button>
             
             {checkedVideos.size > 0 && (
@@ -81,7 +128,7 @@ const VideoListPro = ({
       </div>
 
       <div className="video-grid">
-        {videos.map((video) => {
+        {filteredVideos.map((video) => {
           const videoId = video.id.videoId || video.id;
           const isChecked = checkedVideos.has(videoId);
           const isDownloading = downloadingVideos.has(videoId);

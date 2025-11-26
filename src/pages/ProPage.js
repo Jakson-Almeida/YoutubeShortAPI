@@ -25,7 +25,8 @@ function ProPage() {
     saveVideo: true,
     saveDescription: false,
     saveLinks: false,
-    linkFilter: ''
+    linkFilter: '',
+    hideDownloaded: false // Ocultar vídeos já baixados
   });
   const [downloadingVideos, setDownloadingVideos] = useState(new Set()); // Set de videoIds em download
 
@@ -520,6 +521,7 @@ function ProPage() {
                   selectable={true}
                   onBatchDownload={handleBatchDownload}
                   downloadingVideos={downloadingVideos}
+                  hideDownloaded={advancedOptions.hideDownloaded || false}
                 />
               ) : (
                 <VideoList

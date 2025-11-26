@@ -225,6 +225,14 @@
   margin-top: -5px;
 }
 
+.option-hint {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: normal;
+  margin-top: 2px;
+  font-style: italic;
+}
+
 @media (max-width: 768px) {
   .advanced-search-form {
     padding: 15px;

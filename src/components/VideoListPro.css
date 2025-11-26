@@ -13,10 +13,27 @@
   gap: 15px;
 }
 
+.video-list-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .video-list-title {
   font-size: 1.5rem;
   color: #333;
   margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hidden-count {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: normal;
+  font-style: italic;
 }
 
 .batch-controls {
