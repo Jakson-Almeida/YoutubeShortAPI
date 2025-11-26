@@ -33,6 +33,85 @@
   z-index: 1;
 }
 
+.video-card.checked {
+  border: 3px solid #667eea;
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.video-card.downloading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.video-checkbox-container {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 6px;
+  padding: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  opacity: 1 !important; /* Sempre visível */
+  display: block !important; /* Sempre exibido */
+  transition: opacity 0.2s, transform 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+/* Sempre visível e destacado quando o vídeo está marcado */
+.video-card.checked .video-checkbox-container {
+  background: rgba(102, 126, 234, 0.95);
+  box-shadow: 0 3px 12px rgba(102, 126, 234, 0.5);
+  transform: scale(1.05);
+  opacity: 1 !important;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+.video-checkbox {
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+/* Checkbox marcado mais visível */
+.video-card.checked .video-checkbox {
+  accent-color: white;
+}
+
+.video-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.downloading-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 152, 0, 0.95);
+  color: white;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
 .video-thumbnail {
   position: relative;
   width: 100%;
