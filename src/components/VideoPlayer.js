@@ -11,7 +11,10 @@ const VideoPlayer = ({ video, onClose }) => {
   const [downloadProgress, setDownloadProgress] = useState(null);
 
   const videoId = video.id.videoId;
+  const channelId = video.snippet.channelId;
   const embedUrl = `https://www.youtube.com/embed/${videoId}`;
+  const [channelHandle, setChannelHandle] = useState(null);
+  const [showCopyFeedback, setShowCopyFeedback] = useState(false);
 
   // Bloquear scroll do body quando o modal estiver aberto
   useEffect(() => {
@@ -43,6 +46,46 @@ const VideoPlayer = ({ video, onClose }) => {
 
     fetchFormats();
   }, [videoId]);
+
+  // Buscar handle do canal
+  useEffect(() => {
+    const fetchChannelHandle = async () => {
+      if (!channelId) return;
+      
+      try {
+        const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
+        if (!apiKey) return;
+
+        const response = await fetch(
+          `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${channelId}&key=${apiKey}`
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.items && data.items.length > 0) {
+            const handle = data.items[0].snippet.customUrl;
+            if (handle) {
+              setChannelHandle(handle);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao buscar handle do canal:', error);
+      }
+    };
+
+    fetchChannelHandle();
+  }, [channelId]);
+
+  const handleCopyChannelHandle = (e) => {
+    e.stopPropagation();
+    if (channelHandle) {
+      navigator.clipboard.writeText(channelHandle).then(() => {
+        setShowCopyFeedback(true);
+        setTimeout(() => setShowCopyFeedback(false), 2000);
+      });
+    }
+  };
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -306,6 +349,17 @@ const VideoPlayer = ({ video, onClose }) => {
             <h2 className="video-player-title">{video.snippet.title}</h2>
             <p className="video-player-channel">
               📺 {video.snippet.channelTitle}
+              {channelHandle && (
+                <span 
+                  className="channel-handle" 
+                  onClick={handleCopyChannelHandle}
+                  title="Clique para copiar"
+                >
+                  {channelHandle}
+                  <span className="copy-icon">📋</span>
+                  {showCopyFeedback && <span className="copy-feedback">Copiado!</span>}
+                </span>
+              )}
             </p>
             <p className="video-player-description">
               {video.snippet.description.substring(0, 200)}
