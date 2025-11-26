@@ -363,8 +363,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     
                     download_thread = threading.Thread(target=download_thread_func, daemon=True)
                     download_thread.start()
-                    print(f"[MONITOR] Download iniciado em thread. Monitorando diretório: {tmpdir}")
-                    app.logger.info("Download iniciado em thread. Monitorando diretório: %s", tmpdir)
+                    app.logger.debug("Monitorando diretório temporário: %s", tmpdir)
                     
                     # Monitorar diretório enquanto download está rodando
                     max_wait = 600  # 10 minutos máximo
@@ -398,7 +397,6 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                                     time.sleep(2)
                                     temp_size2 = os.path.getsize(temp_file)
                                     if temp_size1 == temp_size2 and temp_size1 > 0:
-                                        print(f"[MONITOR] Arquivo .temp.mp4 estável encontrado: {temp_files[0]} ({temp_size1} bytes)")
                                         app.logger.info("Arquivo .temp.mp4 estável encontrado: %s (%d bytes)", temp_files[0], temp_size1)
                                         # Usar o temp como final
                                         final_mp4_files = [temp_files[0]]
@@ -412,7 +410,6 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                                         continue  # Arquivo foi deletado, continuar monitorando
                                     
                                     final_mp4_files = final_files
-                                    print(f"[MONITOR] Arquivo final detectado: {final_mp4_files[0]}")
                                     app.logger.info("Arquivo final detectado durante download: %s", final_mp4_files[0])
                                     
                                     # Aguardar um pouco mais para garantir que está completo
@@ -420,7 +417,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                                     
                                     # Verificar se arquivo ainda existe e está estável
                                     if not os.path.exists(file_path):
-                                        print(f"[MONITOR] Arquivo foi deletado durante verificação, continuando monitoramento...")
+                                        app.logger.debug("Arquivo removido durante verificação; aguardando FFmpeg")
                                         final_mp4_files = []  # Reset para continuar procurando
                                         continue
                                     
@@ -429,29 +426,25 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                                     
                                     # Verificar novamente se arquivo ainda existe e está estável
                                     if not os.path.exists(file_path):
-                                        print(f"[MONITOR] Arquivo foi deletado durante verificação de tamanho, continuando monitoramento...")
+                                        app.logger.debug("Arquivo removido durante verificação de tamanho; aguardando FFmpeg")
                                         final_mp4_files = []  # Reset para continuar procurando
                                         continue
                                     
                                     if os.path.getsize(file_path) == file_size:  # Arquivo não mudou
-                                        print(f"[MONITOR] Arquivo final estável ({file_size} bytes). Finalizando.")
                                         app.logger.info("Arquivo final estável (tamanho: %d bytes). Finalizando download.", file_size)
                                         break
                                 except (OSError, FileNotFoundError) as e:
-                                    # Arquivo pode ter sido deletado, continuar monitorando
-                                    print(f"[MONITOR] Arquivo não acessível durante verificação: {e}")
+                                    app.logger.debug("Arquivo não acessível durante verificação: %s", str(e))
                                     final_mp4_files = []  # Reset para continuar procurando
                                     continue
                             
                             # Log periódico
                             elapsed = int(time.time() - wait_start)
                             if elapsed - last_log_time >= 10:
-                                print(f"[MONITOR] Aguardando... ({elapsed}s, {len(all_files)} arquivos no diretório)")
-                                app.logger.info("Monitorando... (%d segundos, %d arquivos no diretório)", 
-                                              elapsed, len(all_files))
+                                app.logger.debug("Monitorando download (%ds, %d arquivos temporários)", 
+                                                 elapsed, len(all_files))
                                 last_log_time = elapsed
                         except Exception as e:
-                            print(f"[MONITOR] ERRO ao monitorar: {str(e)}")
                             app.logger.error("Erro ao monitorar diretório: %s", str(e))
                     
                     # Aguardar thread terminar ou timeout
@@ -471,13 +464,10 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     # Se já encontramos arquivo final durante o monitoramento, usar ele
                     if final_mp4_files:
                         downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
-                        # Verificar se o arquivo ainda existe antes de usar
                         if not os.path.exists(downloaded_file):
-                            print(f"[MONITOR] Arquivo não existe mais, procurando novamente...")
                             app.logger.warning("Arquivo encontrado anteriormente não existe mais: %s", downloaded_file)
                             final_mp4_files = []  # Resetar para procurar novamente
                         else:
-                            print(f"[MONITOR] Usando arquivo encontrado: {final_mp4_files[0]}")
                             app.logger.info("Usando arquivo final encontrado durante monitoramento: %s", downloaded_file)
                     
                     # Se arquivo não existe ou não foi encontrado, procurar novamente
@@ -502,13 +492,11 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                             if temp_files:
                                 temp_file_path = os.path.join(tmpdir, temp_files[0])
                                 temp_size = os.path.getsize(temp_file_path)
-                                print(f"[MONITOR] Usando arquivo .temp.mp4 como final: {temp_files[0]} ({temp_size} bytes)")
                                 app.logger.info("Usando arquivo .temp.mp4 como final: %s (%d bytes)", temp_files[0], temp_size)
                                 final_mp4_files = temp_files
                         
                         if final_mp4_files:
                             downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
-                            print(f"[MONITOR] Arquivo selecionado: {final_mp4_files[0]}")
                             app.logger.info("Arquivo final encontrado após download: %s", downloaded_file)
                         else:
                             # Fallback: procurar todos os arquivos de vídeo/áudio (excluindo temporários)
