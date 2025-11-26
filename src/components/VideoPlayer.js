@@ -13,6 +13,14 @@ const VideoPlayer = ({ video, onClose }) => {
   const videoId = video.id.videoId;
   const embedUrl = `https://www.youtube.com/embed/${videoId}`;
 
+  // Bloquear scroll do body quando o modal estiver aberto
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   // Buscar formatos disponíveis quando o componente é montado
   useEffect(() => {
     const fetchFormats = async () => {
