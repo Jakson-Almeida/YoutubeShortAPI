@@ -255,25 +255,77 @@ function ProPage() {
     }
 
     try {
-      const response = await fetch(
+      // Primeiro, buscar canais usando search API
+      const searchResponse = await fetch(
         `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=50&q=${encodeURIComponent(query)}&type=channel&key=${apiKey}`
       );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      if (!searchResponse.ok) {
+        const errorData = await searchResponse.json().catch(() => ({}));
         throw new Error(errorData.error?.message || 'Erro ao buscar canais. Verifique sua API key.');
       }
 
-      const data = await response.json();
+      const searchData = await searchResponse.json();
       
-      if (data.items && data.items.length > 0) {
-        setChannels(data.items);
+      if (searchData.items && searchData.items.length > 0) {
+        // Extrair IDs dos canais encontrados
+        const channelIds = searchData.items
+          .map(item => item.id.channelId || item.snippet.channelId)
+          .filter(id => id);
+        
+        // Buscar detalhes completos dos canais para obter thumbnails melhores
+        let enrichedChannels = searchData.items;
+        
+        if (channelIds.length > 0) {
+          try {
+            const idsParam = channelIds.slice(0, 50).join(','); // API limita a 50
+            const detailsResponse = await fetch(
+              `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${idsParam}&key=${apiKey}`
+            );
+            
+            if (detailsResponse.ok) {
+              const detailsData = await detailsResponse.json();
+              
+              if (detailsData.items && detailsData.items.length > 0) {
+                // Criar mapa de canais por ID
+                const channelMap = new Map();
+                detailsData.items.forEach(channel => {
+                  channelMap.set(channel.id, channel);
+                });
+                
+                // Enriquecer canais originais com dados completos
+                enrichedChannels = searchData.items.map(item => {
+                  const channelId = item.id.channelId || item.snippet.channelId;
+                  const fullChannel = channelMap.get(channelId);
+                  
+                  if (fullChannel && fullChannel.snippet) {
+                    // Usar snippet completo do channels.list (tem thumbnails melhores)
+                    return {
+                      ...item,
+                      snippet: {
+                        ...item.snippet,
+                        thumbnails: fullChannel.snippet.thumbnails || item.snippet.thumbnails
+                      }
+                    };
+                  }
+                  
+                  return item;
+                });
+              }
+            }
+          } catch (detailsErr) {
+            console.warn('Erro ao buscar detalhes dos canais, usando dados básicos:', detailsErr);
+            // Continuar com dados da busca original se falhar
+          }
+        }
+        
+        setChannels(enrichedChannels);
         setHasSearched(true);
         // Salvar pesquisa de canais
         saveLastSearchPro({
           type: 'channels',
           query: query,
-          results: data.items
+          results: enrichedChannels
         });
       } else {
         setChannels([]);
