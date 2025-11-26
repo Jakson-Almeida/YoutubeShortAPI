@@ -45,11 +45,14 @@ const VideoCard = ({
 
   return (
     <div 
-      className={`video-card ${isSelected ? 'selected' : ''} ${downloaded ? 'downloaded' : ''} ${isChecked ? 'checked' : ''} ${isDownloading ? 'downloading' : ''}`}
+      className={`video-card ${isSelected ? 'selected' : ''} ${downloaded ? 'downloaded' : ''} ${isChecked ? 'checked' : ''} ${isDownloading ? 'downloading' : ''} ${selectable ? 'selectable' : ''}`}
       onClick={selectable && !isDownloading ? undefined : onClick}
     >
       {selectable && (
-        <div className="video-checkbox-container" onClick={handleCheckboxClick}>
+        <div 
+          className={`video-checkbox-container ${isChecked ? 'checked' : ''}`}
+          onClick={handleCheckboxClick}
+        >
           <input
             type="checkbox"
             checked={isChecked}
