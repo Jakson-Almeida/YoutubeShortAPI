@@ -1,21 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import '../App.css';
 import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 import VideoPlayer from '../components/VideoPlayer';
+import SuggestedContent from '../components/SuggestedContent';
 import Logo from '../components/Logo';
 import { Link } from 'react-router-dom';
+import { saveLastSearch, getLastSearch } from '../utils/searchHistory';
 
 function HomePage() {
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
 
-  const handleSearch = async (searchTerm) => {
-    setLoading(true);
-    setError(null);
-    setSelectedVideo(null);
+  const handleSearch = async (searchTerm, silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      setSelectedVideo(null);
+    }
 
     const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
     
@@ -39,16 +45,41 @@ function HomePage() {
       
       if (data.items) {
         setVideos(data.items);
+        setHasSearched(true);
+        // Salvar pesquisa no localStorage
+        saveLastSearch(searchTerm, data.items);
       } else {
         setVideos([]);
+        setHasSearched(true);
       }
     } catch (err) {
       setError(err.message);
       setVideos([]);
+      setHasSearched(true);
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
+
+  // Carregar última pesquisa ao montar o componente
+  useEffect(() => {
+    const lastSearch = getLastSearch();
+    
+    if (lastSearch && lastSearch.results && lastSearch.results.length > 0) {
+      // Restaurar vídeos da última pesquisa
+      setVideos(lastSearch.results);
+      setHasSearched(true);
+      setInitialLoad(false);
+    } else if (lastSearch && lastSearch.term) {
+      // Se tem termo mas não tem resultados, buscar novamente silenciosamente
+      handleSearch(lastSearch.term, true);
+    } else {
+      // Se não tem última pesquisa, mostrar conteúdo sugerido
+      // (não fazer busca automática, deixar usuário escolher)
+      setInitialLoad(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleVideoSelect = (video) => {
     setSelectedVideo(video);
@@ -96,14 +127,20 @@ function HomePage() {
         {loading ? (
           <div className="loading-container">
             <div className="spinner"></div>
-            <p>Buscando vídeos...</p>
+            <p>{initialLoad ? 'Carregando conteúdo...' : 'Buscando vídeos...'}</p>
           </div>
         ) : (
-          <VideoList
-            videos={videos}
-            onVideoSelect={handleVideoSelect}
-            selectedVideo={selectedVideo}
-          />
+          <>
+            {!hasSearched ? (
+              <SuggestedContent onSearch={handleSearch} />
+            ) : (
+              <VideoList
+                videos={videos}
+                onVideoSelect={handleVideoSelect}
+                selectedVideo={selectedVideo}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

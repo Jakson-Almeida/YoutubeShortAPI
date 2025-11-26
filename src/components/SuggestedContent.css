@@ -1,0 +1,132 @@
+.suggested-content {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+.suggested-header {
+  text-align: center;
+  margin-bottom: 30px;
+  color: white;
+}
+
+.suggested-header h2 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.suggested-header p {
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+.suggestions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+  margin-top: 30px;
+}
+
+.suggestion-card {
+  background: white;
+  border-radius: 12px;
+  padding: 25px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  border: 2px solid transparent;
+}
+
+.suggestion-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  border-color: #667eea;
+}
+
+.suggestion-card.popular {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.suggestion-card.lucky-card {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  grid-column: span 1;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.lucky-icon {
+  font-size: 3rem;
+  margin-bottom: 10px;
+  animation: rotate 3s ease-in-out infinite;
+}
+
+@keyframes rotate {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-10deg);
+  }
+  75% {
+    transform: rotate(10deg);
+  }
+}
+
+.lucky-card h3 {
+  font-size: 1.3rem;
+  margin: 10px 0 5px 0;
+  font-weight: 700;
+}
+
+.lucky-card p {
+  font-size: 0.9rem;
+  opacity: 0.95;
+  margin: 0;
+}
+
+.suggestion-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: block;
+}
+
+.suggestion-card.popular .suggestion-label {
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .suggestions-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+  }
+
+  .suggestion-card {
+    padding: 20px 15px;
+  }
+
+  .suggestion-label {
+    font-size: 1rem;
+  }
+
+  .lucky-card {
+    min-height: 120px;
+  }
+
+  .lucky-icon {
+    font-size: 2.5rem;
+  }
+
+  .suggested-header h2 {
+    font-size: 1.5rem;
+  }
+}
+
