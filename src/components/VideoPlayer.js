@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './VideoPlayer.css';
+import { markVideoAsDownloaded } from '../utils/downloadHistory';
 
 const VideoPlayer = ({ video, onClose }) => {
   const [downloading, setDownloading] = useState(false);
@@ -188,6 +189,20 @@ const VideoPlayer = ({ video, onClose }) => {
       document.body.removeChild(a);
       
       console.log('Download iniciado no navegador');
+      
+      // Marcar vídeo como baixado no localStorage
+      markVideoAsDownloaded(videoId, {
+        title: video.snippet.title,
+        channelTitle: video.snippet.channelTitle,
+        thumbnail: video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url,
+        quality: quality
+      });
+      
+      // Disparar evento customizado para atualizar os VideoCards
+      window.dispatchEvent(new CustomEvent('videoDownloaded', { 
+        detail: { videoId } 
+      }));
+      
       setDownloading(false);
       setDownloadProgress(null);
     } catch (error) {
@@ -224,6 +239,19 @@ const VideoPlayer = ({ video, onClose }) => {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
+      // Marcar vídeo como baixado no localStorage
+      markVideoAsDownloaded(videoId, {
+        title: video.snippet.title,
+        channelTitle: video.snippet.channelTitle,
+        thumbnail: video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url,
+        quality: selectedQuality
+      });
+      
+      // Disparar evento customizado para atualizar os VideoCards
+      window.dispatchEvent(new CustomEvent('videoDownloaded', { 
+        detail: { videoId } 
+      }));
       
       setDownloading(false);
       setDownloadProgress(null);
