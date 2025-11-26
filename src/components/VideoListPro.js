@@ -10,7 +10,8 @@ const VideoListPro = ({
   selectable = false,
   onBatchDownload,
   downloadingVideos = new Set(), // Set de videoIds que estão sendo baixados
-  hideDownloaded = false // Ocultar vídeos já baixados
+  hideDownloaded = false, // Ocultar vídeos já baixados
+  pagination = null // { hasNextPage, hasPrevPage, onNextPage, onPrevPage }
 }) => {
   const [checkedVideos, setCheckedVideos] = useState(new Set());
 
@@ -164,6 +165,28 @@ const VideoListPro = ({
           );
         })}
       </div>
+
+      {pagination && (pagination.hasNextPage || pagination.hasPrevPage) && (
+        <div className="pagination-controls">
+          <button
+            className="pagination-button prev-button"
+            onClick={pagination.onPrevPage}
+            disabled={!pagination.hasPrevPage}
+          >
+            ← Página Anterior
+          </button>
+          <span className="pagination-info">
+            {pagination.currentPage ? `Página ${pagination.currentPage}` : ''}
+          </span>
+          <button
+            className="pagination-button next-button"
+            onClick={pagination.onNextPage}
+            disabled={!pagination.hasNextPage}
+          >
+            Próxima Página →
+          </button>
+        </div>
+      )}
     </div>
   );
 };

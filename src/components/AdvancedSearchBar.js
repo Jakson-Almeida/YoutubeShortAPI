@@ -13,6 +13,9 @@ const AdvancedSearchBar = ({
   const [searchType, setSearchType] = useState('videos'); // 'videos' ou 'channels'
   const [orderBy, setOrderBy] = useState('date'); // 'date' (recentes) ou 'date:asc' (antigos)
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [dateRangeEnabled, setDateRangeEnabled] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const extractChannelIdFromUrl = (url) => {
     if (!url) return '';
@@ -64,7 +67,10 @@ const AdvancedSearchBar = ({
         onSearch({
           query: searchTerm.trim(),
           channelId: channelId.trim() || null,
-          orderBy: orderBy
+          orderBy: orderBy,
+          dateFrom: dateRangeEnabled && dateFrom ? dateFrom : null,
+          dateTo: dateRangeEnabled && dateTo ? dateTo : null,
+          pageToken: null // Sempre começar da primeira página
         });
       }
     }
@@ -120,15 +126,57 @@ const AdvancedSearchBar = ({
           )}
 
           {searchType === 'videos' && (
-            <select
-              value={orderBy}
-              onChange={(e) => setOrderBy(e.target.value)}
-              className="advanced-search-select"
-              disabled={loading}
-            >
-              <option value="date">Mais recentes</option>
-              <option value="date:asc">Mais antigos</option>
-            </select>
+            <>
+              <select
+                value={orderBy}
+                onChange={(e) => setOrderBy(e.target.value)}
+                className="advanced-search-select"
+                disabled={loading}
+              >
+                <option value="date">Mais recentes</option>
+                <option value="date:asc">Mais antigos</option>
+              </select>
+              
+              <div className="date-range-container">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={dateRangeEnabled}
+                    onChange={(e) => setDateRangeEnabled(e.target.checked)}
+                    disabled={loading}
+                  />
+                  <span>Filtrar por intervalo de datas</span>
+                </label>
+                
+                {dateRangeEnabled && (
+                  <div className="date-inputs">
+                    <label className="date-label">
+                      <span>De:</span>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        max={dateTo || new Date().toISOString().split('T')[0]}
+                        className="date-input"
+                        disabled={loading}
+                      />
+                    </label>
+                    <label className="date-label">
+                      <span>Até:</span>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        min={dateFrom || undefined}
+                        max={new Date().toISOString().split('T')[0]}
+                        className="date-input"
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 

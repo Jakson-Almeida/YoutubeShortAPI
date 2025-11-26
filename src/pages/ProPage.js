@@ -29,6 +29,10 @@ function ProPage() {
     hideDownloaded: false // Ocultar vídeos já baixados
   });
   const [downloadingVideos, setDownloadingVideos] = useState(new Set()); // Set de videoIds em download
+  const [nextPageToken, setNextPageToken] = useState(null); // Token para próxima página
+  const [pageTokenStack, setPageTokenStack] = useState([]); // Stack de tokens para navegação (histórico)
+  const [currentSearchParams, setCurrentSearchParams] = useState(null); // Parâmetros da busca atual
+  const [currentPage, setCurrentPage] = useState(1); // Página atual (1-indexed)
 
   const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
 
@@ -143,12 +147,19 @@ function ProPage() {
     return null;
   };
 
-  const handleSearchVideos = async ({ query, channelId, orderBy }) => {
+  const handleSearchVideos = async ({ query, channelId, orderBy, dateFrom, dateTo, pageToken = null, isNewSearch = false }) => {
     setLoading(true);
     setError(null);
     setSelectedVideo(null);
     setCurrentSearchType('videos');
     setChannels([]);
+
+    // Se é uma nova busca, resetar tokens de paginação
+    if (isNewSearch || !pageToken) {
+      setNextPageToken(null);
+      setPageTokenStack([null]); // Incluir null para primeira página
+      setCurrentPage(1);
+    }
 
     if (!apiKey) {
       setError('API key não configurada. Verifique o arquivo .env');
@@ -173,6 +184,24 @@ function ProPage() {
       const orderParam = 'date';
       const orderDirection = orderBy === 'date:asc' ? 'asc' : 'desc';
 
+      // Converter datas para formato ISO 8601 (RFC 3339) requerido pela API
+      let publishedAfter = null;
+      let publishedBefore = null;
+      
+      if (dateFrom) {
+        // Data início do dia (00:00:00 UTC)
+        const dateFromObj = new Date(dateFrom);
+        dateFromObj.setHours(0, 0, 0, 0);
+        publishedAfter = dateFromObj.toISOString();
+      }
+      
+      if (dateTo) {
+        // Data fim do dia (23:59:59 UTC)
+        const dateToObj = new Date(dateTo);
+        dateToObj.setHours(23, 59, 59, 999);
+        publishedBefore = dateToObj.toISOString();
+      }
+
       let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=50&type=video&videoDuration=short&order=${orderParam}&key=${apiKey}`;
       
       if (query) {
@@ -181,6 +210,20 @@ function ProPage() {
       
       if (finalChannelId) {
         url += `&channelId=${finalChannelId}`;
+      }
+
+      // Adicionar filtros de data
+      if (publishedAfter) {
+        url += `&publishedAfter=${publishedAfter}`;
+      }
+      
+      if (publishedBefore) {
+        url += `&publishedBefore=${publishedBefore}`;
+      }
+
+      // Adicionar token de paginação se fornecido
+      if (pageToken) {
+        url += `&pageToken=${pageToken}`;
       }
 
       const response = await fetch(url);
@@ -214,17 +257,44 @@ function ProPage() {
       setVideos(items);
       setHasSearched(true);
       
-      // Salvar pesquisa de vídeos
-      saveLastSearchPro({
-        type: 'videos',
+      // Atualizar tokens de paginação
+      const newNextPageToken = data.nextPageToken || null;
+      setNextPageToken(newNextPageToken);
+      
+      // Atualizar página atual baseado no estado
+      if (isNewSearch || (!pageToken && pageTokenStack.length <= 1)) {
+        // Nova busca ou primeira página (stack tem apenas [null])
+        setCurrentPage(1);
+      } else if (pageToken) {
+        // Navegando: a página é baseada no tamanho do stack
+        // Stack tem [null, token1, token2, ...], então a página atual é stack.length
+        setCurrentPage(pageTokenStack.length);
+      }
+      
+      // Salvar parâmetros da busca atual para navegação
+      setCurrentSearchParams({
         query: query || '',
         channelId: finalChannelId || null,
         orderBy: orderBy,
-        results: items
+        dateFrom: dateFrom,
+        dateTo: dateTo
       });
       
+      // Salvar pesquisa de vídeos (apenas para nova busca, sem incluir tokens de paginação)
+      if (isNewSearch || !pageToken) {
+        saveLastSearchPro({
+          type: 'videos',
+          query: query || '',
+          channelId: finalChannelId || null,
+          orderBy: orderBy,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+          results: items
+        });
+      }
+      
       if (items.length === 0) {
-        setError('Nenhum vídeo encontrado. Tente ajustar os filtros de busca.');
+        setError('Nenhum vídeo encontrado neste intervalo de datas. Tente ajustar os filtros de busca.');
       }
     } catch (err) {
       setError(err.message);
@@ -356,6 +426,58 @@ function ProPage() {
         channelId: channelId, 
         orderBy: 'date' 
       });
+    }
+  };
+
+  const handleNextPage = () => {
+    if (nextPageToken && currentSearchParams) {
+      // Adicionar o token ao stack ANTES de navegar (para poder voltar depois)
+      setPageTokenStack(prev => {
+        // Adicionar o token que vamos usar para ir para a próxima página
+        if (!prev.includes(nextPageToken)) {
+          return [...prev, nextPageToken];
+        }
+        return prev;
+      });
+      
+      handleSearchVideos({
+        ...currentSearchParams,
+        pageToken: nextPageToken,
+        isNewSearch: false
+      });
+      // Scroll para o topo após navegar
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (!currentSearchParams) return;
+    
+    if (pageTokenStack.length > 1) {
+      // Temos pelo menos 2 entradas no stack (null + tokens), podemos voltar
+      // Remover o último token (da página atual) e usar o penúltimo
+      const newStack = [...pageTokenStack];
+      newStack.pop(); // Remover token da página atual
+      const tokenToUse = newStack[newStack.length - 1]; // Usar penúltimo (pode ser null)
+      setPageTokenStack(newStack);
+      
+      handleSearchVideos({
+        ...currentSearchParams,
+        pageToken: tokenToUse,
+        isNewSearch: false
+      });
+      
+      // Scroll para o topo após navegar
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      // Stack tem apenas [null], já estamos na primeira página
+      // Não fazer nada ou fazer nova busca sem token
+      handleSearchVideos({
+        ...currentSearchParams,
+        pageToken: null,
+        isNewSearch: false
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -522,6 +644,13 @@ function ProPage() {
                   onBatchDownload={handleBatchDownload}
                   downloadingVideos={downloadingVideos}
                   hideDownloaded={advancedOptions.hideDownloaded || false}
+                  pagination={{
+                    hasNextPage: !!nextPageToken,
+                    hasPrevPage: pageTokenStack.length > 0 || currentPage > 1,
+                    onNextPage: handleNextPage,
+                    onPrevPage: handlePrevPage,
+                    currentPage: currentPage
+                  }}
                 />
               ) : (
                 <VideoList
