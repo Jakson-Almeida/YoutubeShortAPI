@@ -4,6 +4,7 @@
 
 const SEARCH_HISTORY_KEY = 'youtube_shorts_search_history';
 const LAST_SEARCH_KEY = 'youtube_shorts_last_search';
+const LAST_SEARCH_PRO_KEY = 'youtube_shorts_last_search_pro'; // Para página Pro
 const MAX_HISTORY_ITEMS = 10;
 
 /**
@@ -89,12 +90,57 @@ export const getSearchHistory = () => {
 };
 
 /**
+ * Salva a última pesquisa realizada na página Pro
+ */
+export const saveLastSearchPro = (searchData) => {
+  try {
+    const proSearchData = {
+      ...searchData,
+      timestamp: Date.now()
+    };
+    
+    localStorage.setItem(LAST_SEARCH_PRO_KEY, JSON.stringify(proSearchData));
+    return true;
+  } catch (error) {
+    console.error('Erro ao salvar última pesquisa Pro:', error);
+    return false;
+  }
+};
+
+/**
+ * Obtém a última pesquisa realizada na página Pro
+ */
+export const getLastSearchPro = () => {
+  try {
+    const stored = localStorage.getItem(LAST_SEARCH_PRO_KEY);
+    if (!stored) return null;
+    
+    const searchData = JSON.parse(stored);
+    
+    // Verificar se a pesquisa é muito antiga (mais de 7 dias)
+    const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 dias
+    const age = Date.now() - searchData.timestamp;
+    
+    if (age > maxAge) {
+      localStorage.removeItem(LAST_SEARCH_PRO_KEY);
+      return null;
+    }
+    
+    return searchData;
+  } catch (error) {
+    console.error('Erro ao ler última pesquisa Pro:', error);
+    return null;
+  }
+};
+
+/**
  * Limpa o histórico de pesquisas
  */
 export const clearSearchHistory = () => {
   try {
     localStorage.removeItem(SEARCH_HISTORY_KEY);
     localStorage.removeItem(LAST_SEARCH_KEY);
+    localStorage.removeItem(LAST_SEARCH_PRO_KEY);
     return true;
   } catch (error) {
     console.error('Erro ao limpar histórico de pesquisas:', error);

@@ -5,9 +5,11 @@ import VideoList from '../components/VideoList';
 import VideoListPro from '../components/VideoListPro';
 import VideoPlayer from '../components/VideoPlayer';
 import ChannelList from '../components/ChannelList';
+import SuggestedContentPro from '../components/SuggestedContentPro';
 import Logo from '../components/Logo';
 import { Link } from 'react-router-dom';
 import { markVideoAsDownloaded } from '../utils/downloadHistory';
+import { saveLastSearchPro, getLastSearchPro } from '../utils/searchHistory';
 
 function ProPage() {
   const [videos, setVideos] = useState([]);
@@ -16,6 +18,8 @@ function ProPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [currentSearchType, setCurrentSearchType] = useState(null); // 'videos' ou 'channels'
+  const [hasSearched, setHasSearched] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [advancedOptions, setAdvancedOptions] = useState({
     allowMultipleDownloads: false,
     saveVideo: true,
@@ -32,6 +36,27 @@ function ProPage() {
       setError('API key não configurada. Verifique o arquivo .env');
     }
   }, [apiKey]);
+
+  // Carregar última pesquisa ao montar o componente
+  useEffect(() => {
+    const lastSearch = getLastSearchPro();
+    
+    if (lastSearch && lastSearch.results && lastSearch.results.length > 0) {
+      if (lastSearch.type === 'videos') {
+        setVideos(lastSearch.results);
+        setCurrentSearchType('videos');
+        setHasSearched(true);
+        setInitialLoad(false);
+      } else if (lastSearch.type === 'channels') {
+        setChannels(lastSearch.results);
+        setCurrentSearchType('channels');
+        setHasSearched(true);
+        setInitialLoad(false);
+      }
+    } else {
+      setInitialLoad(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const extractChannelId = async (channelUrlOrId) => {
     if (!channelUrlOrId) return null;
@@ -186,6 +211,16 @@ function ProPage() {
       }
       
       setVideos(items);
+      setHasSearched(true);
+      
+      // Salvar pesquisa de vídeos
+      saveLastSearchPro({
+        type: 'videos',
+        query: query || '',
+        channelId: finalChannelId || null,
+        orderBy: orderBy,
+        results: items
+      });
       
       if (items.length === 0) {
         setError('Nenhum vídeo encontrado. Tente ajustar os filtros de busca.');
@@ -193,8 +228,10 @@ function ProPage() {
     } catch (err) {
       setError(err.message);
       setVideos([]);
+      setHasSearched(true);
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -231,15 +268,25 @@ function ProPage() {
       
       if (data.items && data.items.length > 0) {
         setChannels(data.items);
+        setHasSearched(true);
+        // Salvar pesquisa de canais
+        saveLastSearchPro({
+          type: 'channels',
+          query: query,
+          results: data.items
+        });
       } else {
         setChannels([]);
         setError('Nenhum canal encontrado. Tente outro termo de busca.');
+        setHasSearched(true);
       }
     } catch (err) {
       setError(err.message);
       setChannels([]);
+      setHasSearched(true);
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -431,13 +478,11 @@ function ProPage() {
               )
             )}
 
-            {!loading && currentSearchType === null && (
-              <div className="no-videos">
-                <p>🔍 Use a busca acima para encontrar Shorts ou Canais</p>
-                <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '10px' }}>
-                  Você pode buscar por termo, filtrar por canal específico, ou buscar apenas canais
-                </p>
-              </div>
+            {!hasSearched && !loading && (
+              <SuggestedContentPro 
+                onSearchVideos={handleSearchVideos}
+                onSearchChannels={handleSearchChannels}
+              />
             )}
           </>
         )}
