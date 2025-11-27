@@ -3,17 +3,38 @@ import re
 import tempfile
 from io import BytesIO
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from urllib.error import HTTPError
 
 from flask import Flask, jsonify, request, send_file, Response, stream_with_context
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import json
 import threading
 
+from models import db, User
+
 app = Flask(__name__)
-CORS(app)
+
+# Configuração do banco de dados
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or \
+    'sqlite:///' + os.path.join(basedir, 'youtube_shorts.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configuração JWT
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY') or 'your-secret-key-change-in-production'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Token expira em 7 dias
+
+# Inicializar extensões
+db.init_app(app)
+jwt = JWTManager(app)
+CORS(app, supports_credentials=True)
+
+# Criar tabelas ao iniciar
+with app.app_context():
+    db.create_all()
 
 # Importações com fallback
 try:
@@ -148,6 +169,107 @@ def health_check():
     
     message = f"Python backend ativo. Métodos disponíveis: {', '.join(methods) if methods else 'nenhum'}"
     return jsonify({"status": "OK", "message": message, "methods": methods})
+
+
+# ==================== ENDPOINTS DE AUTENTICAÇÃO ====================
+
+@app.post("/api/auth/register")
+def register():
+    """Registrar novo usuário"""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '').strip()
+        
+        # Validações
+        if not email or not password:
+            return jsonify({"error": "Email e senha são obrigatórios"}), 400
+        
+        if len(password) < 6:
+            return jsonify({"error": "Senha deve ter pelo menos 6 caracteres"}), 400
+        
+        # Verificar se email já existe
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            return jsonify({"error": "Email já cadastrado"}), 400
+        
+        # Criar novo usuário
+        user = User(email=email, password=password)
+        db.session.add(user)
+        db.session.commit()
+        
+        # Criar token JWT
+        access_token = create_access_token(identity=user.id)
+        
+        return jsonify({
+            "message": "Usuário criado com sucesso",
+            "user": user.to_dict(),
+            "access_token": access_token
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Erro ao registrar usuário: {str(e)}")
+        return jsonify({"error": "Erro ao processar registro"}), 500
+
+
+@app.post("/api/auth/login")
+def login():
+    """Login de usuário"""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '').strip()
+        
+        if not email or not password:
+            return jsonify({"error": "Email e senha são obrigatórios"}), 400
+        
+        # Buscar usuário
+        user = User.query.filter_by(email=email).first()
+        
+        if not user or not user.check_password(password):
+            return jsonify({"error": "Email ou senha incorretos"}), 401
+        
+        # Criar token JWT
+        access_token = create_access_token(identity=user.id)
+        
+        return jsonify({
+            "message": "Login realizado com sucesso",
+            "user": user.to_dict(),
+            "access_token": access_token
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Erro ao fazer login: {str(e)}")
+        return jsonify({"error": "Erro ao processar login"}), 500
+
+
+@app.get("/api/auth/verify")
+@jwt_required()
+def verify():
+    """Verificar se token é válido e retornar dados do usuário"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+        
+        return jsonify({
+            "valid": True,
+            "user": user.to_dict()
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Erro ao verificar token: {str(e)}")
+        return jsonify({"error": "Token inválido"}), 401
+
+
+@app.post("/api/auth/logout")
+@jwt_required()
+def logout():
+    """Logout (no JWT, logout é feito no cliente removendo o token)"""
+    return jsonify({"message": "Logout realizado com sucesso"}), 200
 
 
 @app.get("/api/formats")
@@ -740,6 +862,29 @@ def download_video():
     
     Retorna o binário do vídeo MP4 diretamente ou SSE stream com progresso.
     """
+    # Verificar autenticação
+    try:
+        # Tentar obter token do header Authorization
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+        else:
+            # Tentar obter da query string (para SSE)
+            token = request.args.get('token')
+        
+        if not token:
+            return jsonify({"error": "Autenticação necessária"}), 401
+        
+        # Verificar token
+        from flask_jwt_extended import decode_token
+        decoded = decode_token(token)
+        user_id = decoded.get('sub')
+        if not user_id:
+            return jsonify({"error": "Token inválido"}), 401
+    except Exception as e:
+        app.logger.error(f"Erro ao verificar autenticação: {str(e)}")
+        return jsonify({"error": "Autenticação inválida"}), 401
+    
     video_id = request.args.get("videoId")
     quality = request.args.get("quality", "best")
     use_progress = request.args.get("progress", "false").lower() == "true"
@@ -840,6 +985,38 @@ def download_with_progress(video_id: str, quality: str):
     Envia apenas progresso via SSE. O arquivo será baixado via endpoint normal após conclusão.
     """
     def generate():
+        # Verificar autenticação via token na query string (para SSE)
+        token = request.args.get('token')
+        if token:
+            try:
+                from flask_jwt_extended import decode_token
+                decoded = decode_token(token)
+                user_id = decoded.get('sub')
+                if not user_id:
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                    return
+            except Exception as e:
+                app.logger.error(f"Erro ao verificar token SSE: {str(e)}")
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                return
+        else:
+            # Tentar verificar via header Authorization (fallback)
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Autenticação necessária'})}\n\n"
+                return
+            try:
+                from flask_jwt_extended import decode_token
+                token = auth_header.split(' ')[1]
+                decoded = decode_token(token)
+                user_id = decoded.get('sub')
+                if not user_id:
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                    return
+            except Exception as e:
+                app.logger.error(f"Erro ao verificar token SSE: {str(e)}")
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                return
         progress_data = {'status': 'starting', 'percent': 0, 'downloaded_mb': 0, 'total_mb': 0, 'speed_mbps': 0}
         download_progress[video_id] = progress_data
         
@@ -963,6 +1140,7 @@ def download_with_progress(video_id: str, quality: str):
 
 
 @app.get("/api/download-with-metadata")
+@jwt_required()
 def download_with_metadata():
     """
     Endpoint para download de vídeo com opções de metadados.
@@ -979,6 +1157,23 @@ def download_with_metadata():
     - Se apenas vídeo: arquivo MP4 direto
     - Se tem metadados: arquivo ZIP contendo vídeo + metadata.json
     """
+    # Verificar autenticação
+    try:
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+        else:
+            return jsonify({"error": "Autenticação necessária"}), 401
+        
+        from flask_jwt_extended import decode_token
+        decoded = decode_token(token)
+        user_id = decoded.get('sub')
+        if not user_id:
+            return jsonify({"error": "Token inválido"}), 401
+    except Exception as e:
+        app.logger.error(f"Erro ao verificar autenticação: {str(e)}")
+        return jsonify({"error": "Autenticação inválida"}), 401
+    
     video_id = request.args.get("videoId")
     quality = request.args.get("quality", "best")
     save_video = request.args.get("saveVideo", "true").lower() == "true"
