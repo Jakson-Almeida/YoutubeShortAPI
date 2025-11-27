@@ -5,16 +5,36 @@ import VideoList from '../components/VideoList';
 import VideoPlayer from '../components/VideoPlayer';
 import SuggestedContent from '../components/SuggestedContent';
 import Logo from '../components/Logo';
-import { Link } from 'react-router-dom';
 import { saveLastSearch, getLastSearch } from '../utils/searchHistory';
+import { useAuth } from '../contexts/AuthContext';
+import Login from '../components/Auth/Login';
+import Register from '../components/Auth/Register';
+import UserMenu from '../components/UserMenu';
 
 function HomePage() {
+  const { isAuthenticated, user, logout } = useAuth();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  
+  // Verificar se há parâmetros register ou login na URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('register') === 'true') {
+      setShowRegisterModal(true);
+      // Limpar parâmetro da URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('login') === 'true') {
+      setShowLoginModal(true);
+      // Limpar parâmetro da URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleSearch = async (searchTerm, silent = false) => {
     if (!silent) {
@@ -98,16 +118,13 @@ function HomePage() {
               <p style={{ margin: '5px 0 0 0' }}>Pesquise, visualize e baixe seus Shorts favoritos</p>
             </div>
           </div>
-          <Link to="/pro" className="pro-link" style={{ 
-            padding: '10px 20px', 
-            backgroundColor: '#ff6b6b', 
-            color: 'white', 
-            textDecoration: 'none', 
-            borderRadius: '5px',
-            fontWeight: 'bold'
-          }}>
-            ⭐ Pro
-          </Link>
+          <UserMenu 
+            user={user} 
+            logout={logout} 
+            currentPage="home"
+            onLogin={() => setShowLoginModal(true)}
+            onRegister={() => setShowRegisterModal(true)}
+          />
         </div>
       </header>
 
@@ -143,6 +160,26 @@ function HomePage() {
           </>
         )}
       </div>
+      
+      {showLoginModal && (
+        <Login 
+          onClose={() => setShowLoginModal(false)}
+          onSwitchToRegister={() => {
+            setShowLoginModal(false);
+            setShowRegisterModal(true);
+          }}
+        />
+      )}
+      
+      {showRegisterModal && (
+        <Register 
+          onClose={() => setShowRegisterModal(false)}
+          onSwitchToLogin={() => {
+            setShowRegisterModal(false);
+            setShowLoginModal(true);
+          }}
+        />
+      )}
     </div>
   );
 }

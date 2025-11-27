@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import './VideoPlayer.css';
 import { markVideoAsDownloaded } from '../utils/downloadHistory';
+import { useAuth } from '../contexts/AuthContext';
+import Login from './Auth/Login';
 
 const VideoPlayer = ({ video, onClose }) => {
+  const { isAuthenticated } = useAuth();
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(null);
   const [formats, setFormats] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('best');
   const [loadingFormats, setLoadingFormats] = useState(true);
   const [downloadProgress, setDownloadProgress] = useState(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const videoId = video.id.videoId;
   const channelId = video.snippet.channelId;
@@ -88,15 +92,22 @@ const VideoPlayer = ({ video, onClose }) => {
   };
 
   const handleDownload = async () => {
+    // Verificar autenticação antes de fazer download
+    if (!isAuthenticated) {
+      setShowLoginModal(true);
+      return;
+    }
+
     setDownloading(true);
     setDownloadError(null);
     setDownloadProgress({ status: 'starting', percent: 0, downloaded_mb: 0, total_mb: 0, speed_mbps: 0 });
 
     try {
-      // Usar EventSource para receber progresso via Server-Sent Events
-      const eventSource = new EventSource(
-        `/api/download?videoId=${videoId}&quality=${selectedQuality}&progress=true`
-      );
+      // EventSource não suporta headers customizados, então passamos o token na query string
+      // O backend irá verificar o token da query string para SSE
+      const token = localStorage.getItem('auth_token');
+      const eventSourceUrl = `/api/download?videoId=${videoId}&quality=${selectedQuality}&progress=true${token ? `&token=${token}` : ''}`;
+      const eventSource = new EventSource(eventSourceUrl);
 
       let downloadCompleted = false;
 
@@ -173,8 +184,31 @@ const VideoPlayer = ({ video, onClose }) => {
         
         eventSource.close();
         
-        // Fallback: tentar download normal sem progresso
-        if (!downloadCompleted) {
+        // Verificar se foi erro de autenticação
+        if (eventSource.readyState === EventSource.CLOSED && !downloadCompleted) {
+          // Pode ser erro de autenticação - verificar
+          setTimeout(() => {
+            if (!downloadCompleted) {
+              // Tentar verificar se é erro de autenticação
+              fetch(`/api/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+              }).then(res => {
+                if (!res.ok) {
+                  setShowLoginModal(true);
+                  setDownloadError('Sessão expirada. Faça login novamente.');
+                  setDownloading(false);
+                  setDownloadProgress(null);
+                } else {
+                  // Fallback: tentar download normal sem progresso
+                  handleDownloadFallback();
+                }
+              }).catch(() => {
+                handleDownloadFallback();
+              });
+            }
+          }, 1000);
+        } else if (!downloadCompleted) {
+          // Fallback: tentar download normal sem progresso
           setTimeout(() => {
             handleDownloadFallback();
           }, 2000);
@@ -201,9 +235,20 @@ const VideoPlayer = ({ video, onClose }) => {
   const handleDownloadFile = async (quality, filename) => {
     try {
       console.log(`Baixando arquivo: videoId=${videoId}, quality=${quality}, filename=${filename || 'não fornecido'}`);
-      const response = await fetch(`/api/download?videoId=${videoId}&quality=${quality}`);
+      const { getAuthHeaders } = useAuth();
+      const headers = getAuthHeaders();
+      const response = await fetch(`/api/download?videoId=${videoId}&quality=${quality}`, {
+        headers: headers
+      });
       
       if (!response.ok) {
+        if (response.status === 401) {
+          setShowLoginModal(true);
+          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          setDownloading(false);
+          setDownloadProgress(null);
+          return;
+        }
         const errorText = await response.text();
         console.error('Resposta de erro do servidor:', errorText);
         throw new Error(`Erro ao baixar arquivo: ${response.status} ${response.statusText}`);
@@ -266,9 +311,20 @@ const VideoPlayer = ({ video, onClose }) => {
 
   const handleDownloadFallback = async () => {
     try {
-      const response = await fetch(`/api/download?videoId=${videoId}&quality=${selectedQuality}`);
+      const { getAuthHeaders } = useAuth();
+      const headers = getAuthHeaders();
+      const response = await fetch(`/api/download?videoId=${videoId}&quality=${selectedQuality}`, {
+        headers: headers
+      });
       
       if (!response.ok) {
+        if (response.status === 401) {
+          setShowLoginModal(true);
+          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          setDownloading(false);
+          setDownloadProgress(null);
+          return;
+        }
         let message = 'Serviço de download não disponível.';
         try {
           const errorResponse = await response.json();
@@ -463,6 +519,16 @@ const VideoPlayer = ({ video, onClose }) => {
           </div>
         </div>
       </div>
+      
+      {showLoginModal && (
+        <Login 
+          onClose={() => setShowLoginModal(false)}
+          onSwitchToRegister={() => {
+            setShowLoginModal(false);
+            // Poderia abrir modal de registro aqui
+          }}
+        />
+      )}
     </div>
   );
 };

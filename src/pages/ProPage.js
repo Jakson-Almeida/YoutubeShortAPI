@@ -7,11 +7,13 @@ import VideoPlayer from '../components/VideoPlayer';
 import ChannelList from '../components/ChannelList';
 import SuggestedContentPro from '../components/SuggestedContentPro';
 import Logo from '../components/Logo';
-import { Link } from 'react-router-dom';
 import { markVideoAsDownloaded } from '../utils/downloadHistory';
 import { saveLastSearchPro, getLastSearchPro } from '../utils/searchHistory';
+import { useAuth } from '../contexts/AuthContext';
+import UserMenu from '../components/UserMenu';
 
 function ProPage() {
+  const { user, logout, getAuthHeaders } = useAuth();
   const [videos, setVideos] = useState([]);
   const [channels, setChannels] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
@@ -535,9 +537,15 @@ function ProPage() {
             linkFilter: advancedOptions.linkFilter || ''
           });
 
-          const response = await fetch(`/api/download-with-metadata?${params.toString()}`);
+          const headers = getAuthHeaders();
+          const response = await fetch(`/api/download-with-metadata?${params.toString()}`, {
+            headers: headers
+          });
           
           if (!response.ok) {
+            if (response.status === 401) {
+              throw new Error('Sessão expirada. Faça login novamente.');
+            }
             throw new Error(`Erro ao baixar vídeo ${videoId}`);
           }
 
@@ -616,16 +624,15 @@ function ProPage() {
               <p style={{ margin: '5px 0 0 0' }}>Busca avançada e navegação de Shorts</p>
             </div>
           </div>
-          <Link to="/" className="home-link" style={{ 
-            padding: '10px 20px', 
-            backgroundColor: '#667eea', 
-            color: 'white', 
-            textDecoration: 'none', 
-            borderRadius: '5px',
-            fontWeight: 'bold'
-          }}>
-            🏠 Início
-          </Link>
+          <UserMenu 
+            user={user} 
+            logout={logout} 
+            currentPage="pro"
+            // ProPage é protegida, então onLogin/onRegister teoricamente não seriam usados aqui
+            // se o usuário não estiver logado, mas vamos passar null ou funções vazias
+            onLogin={() => {}}
+            onRegister={() => {}}
+          />
         </div>
       </header>
 
