@@ -344,14 +344,15 @@ function ProPage() {
           .map(item => item.id.channelId || item.snippet.channelId)
           .filter(id => id);
         
-        // Buscar detalhes completos dos canais para obter thumbnails melhores
+        // Buscar detalhes completos dos canais (snippet + statistics) para obter thumbnails e estatísticas
         let enrichedChannels = searchData.items;
         
         if (channelIds.length > 0) {
           try {
             const idsParam = channelIds.slice(0, 50).join(','); // API limita a 50
+            // Buscar snippet e statistics para poder ordenar por relevância
             const detailsResponse = await fetch(
-              `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${idsParam}&key=${apiKey}`
+              `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${idsParam}&key=${apiKey}`
             );
             
             if (detailsResponse.ok) {
@@ -364,23 +365,50 @@ function ProPage() {
                   channelMap.set(channel.id, channel);
                 });
                 
-                // Enriquecer canais originais com dados completos
+                // Enriquecer canais originais com dados completos e estatísticas
                 enrichedChannels = searchData.items.map(item => {
                   const channelId = item.id.channelId || item.snippet.channelId;
                   const fullChannel = channelMap.get(channelId);
                   
-                  if (fullChannel && fullChannel.snippet) {
+                  if (fullChannel) {
                     // Usar snippet completo do channels.list (tem thumbnails melhores)
+                    // e adicionar estatísticas para ordenação
                     return {
                       ...item,
                       snippet: {
                         ...item.snippet,
-                        thumbnails: fullChannel.snippet.thumbnails || item.snippet.thumbnails
-                      }
+                        thumbnails: fullChannel.snippet?.thumbnails || item.snippet.thumbnails
+                      },
+                      statistics: fullChannel.statistics || null
                     };
                   }
                   
                   return item;
+                });
+                
+                // Ordenar canais por relevância: primeiro por número de inscritos, depois por número de vídeos
+                enrichedChannels.sort((a, b) => {
+                  const statsA = a.statistics;
+                  const statsB = b.statistics;
+                  
+                  // Se um canal não tem estatísticas, colocar no final
+                  if (!statsA && !statsB) return 0;
+                  if (!statsA) return 1;
+                  if (!statsB) return -1;
+                  
+                  // Converter para números (podem vir como strings)
+                  const subscribersA = parseInt(statsA.subscriberCount || '0', 10);
+                  const subscribersB = parseInt(statsB.subscriberCount || '0', 10);
+                  const videosA = parseInt(statsA.videoCount || '0', 10);
+                  const videosB = parseInt(statsB.videoCount || '0', 10);
+                  
+                  // Primeiro ordenar por número de inscritos (maior primeiro)
+                  if (subscribersA !== subscribersB) {
+                    return subscribersB - subscribersA;
+                  }
+                  
+                  // Se tiverem o mesmo número de inscritos, ordenar por número de vídeos (maior primeiro)
+                  return videosB - videosA;
                 });
               }
             }
