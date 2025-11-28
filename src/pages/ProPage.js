@@ -299,7 +299,6 @@ function ProPage() {
       setHasSearched(true);
     } finally {
       setLoading(false);
-      setInitialLoad(false);
     }
   };
 
@@ -434,7 +433,6 @@ function ProPage() {
       setHasSearched(true);
     } finally {
       setLoading(false);
-      setInitialLoad(false);
     }
   };
 
