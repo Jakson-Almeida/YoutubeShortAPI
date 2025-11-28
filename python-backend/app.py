@@ -874,17 +874,17 @@ def download_video():
             token = request.args.get('token')
         
         if not token:
-            return jsonify({"error": "Autenticação necessária"}), 401
+            return jsonify({"error": "Faça login para continuar."}), 401
         
         # Verificar token
         from flask_jwt_extended import decode_token
         decoded = decode_token(token)
         user_id = decoded.get('sub')
         if not user_id:
-            return jsonify({"error": "Token inválido"}), 401
+            return jsonify({"error": "Sessão inválida. Faça login novamente."}), 401
     except Exception as e:
         app.logger.error(f"Erro ao verificar autenticação: {str(e)}")
-        return jsonify({"error": "Autenticação inválida"}), 401
+        return jsonify({"error": "Sessão inválida. Faça login novamente."}), 401
     
     video_id = request.args.get("videoId")
     quality = request.args.get("quality", "best")
@@ -998,7 +998,7 @@ def download_with_progress(video_id: str, quality: str):
                     return
             except Exception as e:
                 app.logger.error(f"Erro ao verificar token SSE: {str(e)}")
-                yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Sessão expirada. Faça login novamente.'})}\n\n"
                 return
         else:
             # Tentar verificar via header Authorization (fallback)
@@ -1016,7 +1016,7 @@ def download_with_progress(video_id: str, quality: str):
                     return
             except Exception as e:
                 app.logger.error(f"Erro ao verificar token SSE: {str(e)}")
-                yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Sessão expirada. Faça login novamente.'})}\n\n"
                 return
         progress_data = {'status': 'starting', 'percent': 0, 'downloaded_mb': 0, 'total_mb': 0, 'speed_mbps': 0}
         download_progress[video_id] = progress_data
@@ -1164,16 +1164,16 @@ def download_with_metadata():
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
         else:
-            return jsonify({"error": "Autenticação necessária"}), 401
+            return jsonify({"error": "Faça login para continuar."}), 401
         
         from flask_jwt_extended import decode_token
         decoded = decode_token(token)
         user_id = decoded.get('sub')
         if not user_id:
-            return jsonify({"error": "Token inválido"}), 401
+            return jsonify({"error": "Sessão inválida. Faça login novamente."}), 401
     except Exception as e:
         app.logger.error(f"Erro ao verificar autenticação: {str(e)}")
-        return jsonify({"error": "Autenticação inválida"}), 401
+        return jsonify({"error": "Sessão inválida. Faça login novamente."}), 401
     
     video_id = request.args.get("videoId")
     quality = request.args.get("quality", "best")
