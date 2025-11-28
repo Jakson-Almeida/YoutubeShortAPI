@@ -46,7 +46,7 @@ function HomePage() {
     const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
     
     if (!apiKey) {
-      setError('API key não configurada. Verifique o arquivo .env');
+      setError('Configuração incompleta. Entre em contato com o suporte.');
       setLoading(false);
       return;
     }
@@ -58,7 +58,7 @@ function HomePage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Erro ao buscar vídeos. Verifique sua API key.');
+        throw new Error('Erro ao buscar vídeos. Tente novamente.');
       }
 
       const data = await response.json();

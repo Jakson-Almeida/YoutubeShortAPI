@@ -45,8 +45,7 @@ const VideoPlayer = ({ video, onClose }) => {
         } else {
           // Erro ao buscar formatos - não é erro de autenticação
           // Apenas logar e continuar (usuário ainda pode tentar download)
-          const errorData = await response.json().catch(() => ({}));
-          console.warn('Não foi possível carregar formatos:', errorData.error || 'Erro desconhecido');
+          // Não expor detalhes técnicos ao usuário
           // Definir formato padrão para permitir download mesmo sem formatos
           setFormats([{
             format_id: 'best',
@@ -173,7 +172,8 @@ const VideoPlayer = ({ video, onClose }) => {
             console.error('Erro recebido via SSE:', data.error);
             eventSource.close();
             downloadCompleted = true;
-            setDownloadError(data.error || 'Erro ao baixar vídeo');
+            // Mensagem genérica - não expor detalhes técnicos
+            setDownloadError('Não foi possível concluir o download. Tente novamente.');
             setDownloading(false);
             setDownloadProgress(null);
           }
@@ -327,16 +327,8 @@ const VideoPlayer = ({ video, onClose }) => {
           window.dispatchEvent(new CustomEvent('auth_token_removed'));
           return;
         }
-        let message = 'Serviço de download não disponível.';
-        try {
-          const errorResponse = await response.json();
-          if (errorResponse?.error) {
-            message = `${message} (${errorResponse.error}${errorResponse.message ? `: ${errorResponse.message}` : ''})`;
-          }
-        } catch (_) {
-          // ignora caso não seja JSON
-        }
-        throw new Error(message);
+        // Mensagem genérica - não expor detalhes técnicos
+        throw new Error('Serviço temporariamente indisponível.');
       }
 
       const blob = await response.blob();
@@ -367,18 +359,8 @@ const VideoPlayer = ({ video, onClose }) => {
     } catch (error) {
       console.error('Erro ao baixar vídeo (fallback):', error);
       
-      if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-        setDownloadError('Backend Python não está rodando. Vá até python-backend/, instale as dependências e execute "python app.py".');
-      } else {
-        setDownloadError(error.message);
-      }
-      
-      const alternativeUrl = `https://www.y2mate.com/youtube/${videoId}`;
-      setTimeout(() => {
-        if (window.confirm('Serviço de download não disponível. Deseja abrir um serviço online alternativo?')) {
-          window.open(alternativeUrl, '_blank');
-        }
-      }, 500);
+      // Mensagem genérica - não expor detalhes técnicos do sistema
+      setDownloadError('Não foi possível concluir o download. Tente novamente mais tarde.');
       
       setDownloading(false);
       setDownloadProgress(null);

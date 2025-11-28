@@ -42,7 +42,7 @@ function ProPage() {
 
   useEffect(() => {
     if (!apiKey) {
-      setError('API key não configurada. Verifique o arquivo .env');
+      setError('Configuração incompleta. Entre em contato com o suporte.');
     }
   }, [apiKey]);
 
@@ -166,7 +166,7 @@ function ProPage() {
     }
 
     if (!apiKey) {
-      setError('API key não configurada. Verifique o arquivo .env');
+      setError('Configuração incompleta. Entre em contato com o suporte.');
       setLoading(false);
       return;
     }
@@ -234,7 +234,7 @@ function ProPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Erro ao buscar vídeos. Verifique sua API key.');
+        throw new Error('Erro ao buscar vídeos. Tente novamente.');
       }
 
       const data = await response.json();
@@ -318,7 +318,7 @@ function ProPage() {
     setVideos([]);
 
     if (!apiKey) {
-      setError('API key não configurada. Verifique o arquivo .env');
+      setError('Configuração incompleta. Entre em contato com o suporte.');
       setLoading(false);
       return;
     }
@@ -337,7 +337,7 @@ function ProPage() {
 
       if (!searchResponse.ok) {
         const errorData = await searchResponse.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Erro ao buscar canais. Verifique sua API key.');
+        throw new Error('Erro ao buscar canais. Tente novamente.');
       }
 
       const searchData = await searchResponse.json();
@@ -602,11 +602,11 @@ function ProPage() {
       const errors = results.filter(r => !r.success);
       if (errors.length > 0) {
         console.warn(`${errors.length} vídeo(s) falharam ao baixar:`, errors);
-        setError(`${errors.length} de ${videoIds.length} vídeo(s) falharam ao baixar. Verifique o console para detalhes.`);
+        setError(`${errors.length} de ${videoIds.length} vídeo(s) não foram baixados. Tente novamente.`);
       }
 
     } catch (err) {
-      setError(`Erro durante downloads: ${err.message}`);
+      setError('Erro durante downloads. Tente novamente.');
     } finally {
       // Remover vídeos do conjunto de downloads
       setDownloadingVideos(new Set());

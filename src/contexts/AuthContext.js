@@ -22,23 +22,19 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Garantir que o token seja carregado ANTES de setar loading como false
     const savedToken = localStorage.getItem('auth_token');
-    console.log('[AuthContext] Carregando token do localStorage:', savedToken ? 'Token encontrado' : 'Nenhum token');
     
     if (savedToken) {
       setToken(savedToken);
       // Não verificar o token automaticamente - confiar que se está no localStorage, é válido
       // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
-      console.log('[AuthContext] Token carregado no estado');
     }
     
     // IMPORTANTE: setar loading como false DEPOIS de garantir que o token foi carregado
     // Isso evita que componentes vejam isAuthenticated como false durante o carregamento inicial
     setLoading(false);
-    console.log('[AuthContext] Loading definido como false');
 
     // Listener para quando o token for removido externamente (ex: após 401)
     const handleTokenRemoved = () => {
-      console.log('[AuthContext] Evento auth_token_removed recebido, limpando estado');
       setToken(null);
       setUser(null);
     };
@@ -66,7 +62,6 @@ export const AuthProvider = ({ children }) => {
         return true;
       } else if (response.status === 401) {
         // Token realmente inválido - remover apenas neste caso
-        console.log('[AuthContext] verifyToken - Token inválido (401), removendo...');
         localStorage.removeItem('auth_token');
         setToken(null);
         setUser(null);
@@ -150,7 +145,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     } finally {
-      console.log('[AuthContext] logout - Removendo token e limpando estado');
       setToken(null);
       setUser(null);
       localStorage.removeItem('auth_token');
@@ -169,20 +163,18 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Sincronizar token do localStorage quando detectamos dessincronização
-  // IMPORTANTE: Este useEffect só deve sincronizar quando necessário, não durante o carregamento inicial
+  // IMPORTANTE: Executar sempre que o componente renderizar para garantir sincronização
   useEffect(() => {
-    // Não sincronizar durante o carregamento inicial (loading === true)
-    if (loading) return;
-    
     const savedToken = localStorage.getItem('auth_token');
+    
+    // Se há token no localStorage mas não no estado - sincronizar
     if (savedToken && savedToken !== token) {
-      // Há token no localStorage mas não no estado - sincronizar
-      console.log('[AuthContext] Sincronizando token do localStorage para o estado');
       setToken(savedToken);
-    } else if (!savedToken && token) {
-      // Token foi removido do localStorage externamente - limpar estado
-      // MAS: só fazer isso se não estivermos no carregamento inicial
-      console.log('[AuthContext] Token removido do localStorage, limpando estado');
+    }
+    
+    // Se não há token no localStorage mas há no estado - limpar estado
+    // (mas não durante o carregamento inicial para evitar limpar antes de carregar)
+    if (!savedToken && token && !loading) {
       setToken(null);
       setUser(null);
     }
@@ -200,14 +192,7 @@ export const AuthProvider = ({ children }) => {
     // SEMPRE ler do localStorage - é a fonte única da verdade
     // Não depender do estado 'loading' ou 'token' - se há token no localStorage, o usuário está autenticado
     const savedToken = localStorage.getItem('auth_token');
-    const authenticated = !!savedToken;
-    
-    // Log apenas quando mudar (para debug)
-    if (authenticated !== (token ? true : false)) {
-      console.log('[AuthContext] isAuthenticated:', authenticated, 'token no localStorage:', !!savedToken, 'token no estado:', !!token);
-    }
-    
-    return authenticated;
+    return !!savedToken;
   }, [token, loading]); // Recalcular quando token ou loading mudar, mas sempre ler do localStorage
 
   const value = {

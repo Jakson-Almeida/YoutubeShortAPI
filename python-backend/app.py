@@ -288,7 +288,7 @@ def get_video_formats():
         return jsonify({"error": "ID do video nao fornecido"}), 400
 
     if not YT_DLP_AVAILABLE:
-        return jsonify({"error": "yt-dlp não está disponível"}), 503
+        return jsonify({"error": "Serviço temporariamente indisponível"}), 503
 
     candidate_urls = [
         f"https://www.youtube.com/watch?v={video_id}",
@@ -388,15 +388,17 @@ def get_video_formats():
             # Verificar se é erro de bloqueio do YouTube
             if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
                 app.logger.error("YouTube bloqueou a requisição (detecção de bot)")
+                # Mensagem genérica - não expor detalhes técnicos
                 return jsonify({
-                    "error": "YouTube bloqueou temporariamente o acesso. Tente novamente em alguns minutos.",
+                    "error": "Serviço temporariamente indisponível. Tente novamente mais tarde.",
                     "code": "YOUTUBE_BLOCKED"
                 }), 503
             
             continue
     
+    # Mensagem genérica - não expor detalhes técnicos
     return jsonify({
-        "error": "Não foi possível obter formatos do vídeo. O YouTube pode estar bloqueando o acesso temporariamente.",
+        "error": "Não foi possível processar a solicitação. Tente novamente mais tarde.",
         "code": "FORMATS_UNAVAILABLE"
     }), 503
 
@@ -778,7 +780,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             app.logger.debug(traceback.format_exc())
             continue
     
-    return False, None, None, "yt-dlp falhou para todas as URLs tentadas"
+    return False, None, None, "Não foi possível processar o download"
 
 
 def download_with_pytube(video_id: str):
@@ -843,10 +845,10 @@ def download_with_pytube(video_id: str):
             stream = fetch_stream(yt)
         except Exception as sub_exc:  # pylint: disable=broad-except
             app.logger.warning("Falha ao aplicar bypass_age_gate: %s", sub_exc)
-            return False, None, None, "Não foi possível obter as streams do vídeo. O YouTube retornou erro 400."
+            return False, None, None, "Não foi possível processar o vídeo"
     except PytubeError as exc:
         app.logger.exception("Erro do pytube ao processar streams do video %s", video_id)
-        return False, None, None, f"Erro pytube: {str(exc)}"
+        return False, None, None, "Não foi possível processar o vídeo"
 
     if stream is None:
         app.logger.warning("Nenhum stream compativel encontrado para o video %s", video_id)
@@ -965,14 +967,16 @@ def download_video():
             )
         else:
             app.logger.error("pytube também falhou: %s", error_msg)
+            # Mensagem genérica - não expor detalhes técnicos
             return jsonify({
                 "error": "Falha no download",
-                "message": f"Ambos os métodos falharam. yt-dlp: {'disponível mas falhou' if YT_DLP_AVAILABLE else 'não disponível'}. pytube: {error_msg}"
+                "message": "Não foi possível concluir o download. Tente novamente."
             }), 500
     else:
+        # Mensagem genérica - não expor detalhes técnicos
         return jsonify({
-            "error": "Nenhum método disponível",
-            "message": "Nenhum método de download está disponível. Instale yt-dlp (recomendado) ou pytube."
+            "error": "Serviço indisponível",
+            "message": "Serviço temporariamente indisponível. Tente novamente mais tarde."
         }), 503
 
     # Se chegou aqui, algo deu muito errado
@@ -1204,7 +1208,7 @@ def download_with_metadata():
         return jsonify({"error": "ID do video nao fornecido"}), 400
     
     if not YT_DLP_AVAILABLE:
-        return jsonify({"error": "yt-dlp não está disponível"}), 503
+        return jsonify({"error": "Serviço temporariamente indisponível"}), 503
     
     try:
         app.logger.info("Download com metadados: videoId=%s, saveVideo=%s, saveDescription=%s, saveLinks=%s", 
