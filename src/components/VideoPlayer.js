@@ -242,14 +242,18 @@ const VideoPlayer = ({ video, onClose }) => {
       if (!response.ok) {
         if (response.status === 401) {
           // Token inválido/expirado - remover do localStorage e mostrar login
-          console.log('[VideoPlayer] Token inválido (401), removendo e mostrando login');
-          localStorage.removeItem('auth_token');
-          setShowLoginModal(true);
-          setDownloadError('Sessão expirada. Faça login novamente.');
-          setDownloading(false);
-          setDownloadProgress(null);
-          // Disparar evento para atualizar AuthContext
-          window.dispatchEvent(new CustomEvent('auth_token_removed'));
+          // Verificar se o token ainda é o mesmo antes de remover (evitar remoção acidental)
+          const currentToken = localStorage.getItem('auth_token');
+          if (currentToken) {
+            console.log('[VideoPlayer] Token inválido (401), removendo e mostrando login');
+            localStorage.removeItem('auth_token');
+            setShowLoginModal(true);
+            setDownloadError('Sessão expirada. Faça login novamente.');
+            setDownloading(false);
+            setDownloadProgress(null);
+            // Disparar evento para atualizar AuthContext
+            window.dispatchEvent(new CustomEvent('auth_token_removed'));
+          }
           return;
         }
         // Para erros 500, 503, etc, não tratar como erro de autenticação

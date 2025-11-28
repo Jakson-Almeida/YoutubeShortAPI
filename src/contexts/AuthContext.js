@@ -24,19 +24,26 @@ export const AuthProvider = ({ children }) => {
     const savedToken = localStorage.getItem('auth_token');
     
     if (savedToken) {
+      // Carregar token no estado imediatamente
       setToken(savedToken);
       // Não verificar o token automaticamente - confiar que se está no localStorage, é válido
       // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
+      // O token JWT tem expiração longa (365 dias), então não precisamos verificar constantemente
     }
     
     // IMPORTANTE: setar loading como false DEPOIS de garantir que o token foi carregado
     // Isso evita que componentes vejam isAuthenticated como false durante o carregamento inicial
     setLoading(false);
 
-    // Listener para quando o token for removido externamente (ex: após 401)
+    // Listener para quando o token for removido externamente (ex: após 401 explícito do backend)
     const handleTokenRemoved = () => {
-      setToken(null);
-      setUser(null);
+      // Só remover se realmente foi um 401 - não remover por outros motivos
+      const currentToken = localStorage.getItem('auth_token');
+      if (!currentToken) {
+        // Token já foi removido - apenas sincronizar estado
+        setToken(null);
+        setUser(null);
+      }
     };
 
     window.addEventListener('auth_token_removed', handleTokenRemoved);
@@ -61,19 +68,27 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return true;
       } else if (response.status === 401) {
-        // Token realmente inválido - remover apenas neste caso
-        localStorage.removeItem('auth_token');
-        setToken(null);
-        setUser(null);
+        // Token realmente inválido - remover apenas neste caso EXPLÍCITO
+        // Verificar se o token ainda é o mesmo antes de remover (evitar remoção acidental)
+        const currentToken = localStorage.getItem('auth_token');
+        if (currentToken === authToken) {
+          localStorage.removeItem('auth_token');
+          setToken(null);
+          setUser(null);
+          // Disparar evento para sincronizar outros componentes
+          window.dispatchEvent(new CustomEvent('auth_token_removed'));
+        }
         return false;
       } else {
         // Outros erros (rede, servidor, etc) - manter token mas não setar user
         // O token ainda pode ser válido, apenas não conseguimos verificar agora
+        // NÃO REMOVER o token por erros de rede ou servidor
         console.warn('Erro ao verificar token, mas mantendo sessão:', response.status);
         return true; // Assumir válido se não for 401
       }
     } catch (error) {
-      // Erro de rede - não remover token, pode ser temporário
+      // Erro de rede - NÃO REMOVER token, pode ser temporário
+      // O token JWT é válido localmente até a expiração, não precisamos verificar constantemente
       console.warn('Erro de conexão ao verificar token, mantendo sessão:', error);
       return true; // Assumir válido em caso de erro de rede
     }
@@ -163,20 +178,31 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Sincronizar token do localStorage quando detectamos dessincronização
-  // IMPORTANTE: Executar sempre que o componente renderizar para garantir sincronização
+  // IMPORTANTE: Este useEffect garante que o estado React sempre esteja sincronizado com localStorage
   useEffect(() => {
     const savedToken = localStorage.getItem('auth_token');
     
-    // Se há token no localStorage mas não no estado - sincronizar
+    // Se há token no localStorage mas não no estado - sincronizar imediatamente
+    // Isso é especialmente importante após recarregar a página
     if (savedToken && savedToken !== token) {
       setToken(savedToken);
     }
     
     // Se não há token no localStorage mas há no estado - limpar estado
-    // (mas não durante o carregamento inicial para evitar limpar antes de carregar)
+    // Mas só fazer isso se não estivermos no carregamento inicial
+    // e após confirmar que o token realmente foi removido (não é condição de corrida)
     if (!savedToken && token && !loading) {
-      setToken(null);
-      setUser(null);
+      // Pequeno delay para evitar remoção acidental devido a condições de corrida
+      const timeoutId = setTimeout(() => {
+        const recheckToken = localStorage.getItem('auth_token');
+        if (!recheckToken && token) {
+          // Token realmente não existe mais no localStorage - limpar estado
+          setToken(null);
+          setUser(null);
+        }
+      }, 50);
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [token, loading]);
 
@@ -184,13 +210,15 @@ export const AuthProvider = ({ children }) => {
   // IMPORTANTE: Mesmo durante loading, se há token no localStorage, o usuário está autenticado
   // Isso garante que mesmo durante o carregamento inicial ou após recarregar a página,
   // o isAuthenticated sempre retorna o valor correto baseado no localStorage
+  // O token JWT tem expiração longa (365 dias), então não precisamos verificar constantemente
   const isAuthenticated = useMemo(() => {
     if (typeof localStorage === 'undefined') {
-      // Fallback: usar estado do token se localStorage não estiver disponível
+      // Fallback: usar estado do token se localStorage não estiver disponível (SSR)
       return !!token;
     }
     // SEMPRE ler do localStorage - é a fonte única da verdade
     // Não depender do estado 'loading' ou 'token' - se há token no localStorage, o usuário está autenticado
+    // O token só será removido quando o backend retornar 401 EXPLICITAMENTE
     const savedToken = localStorage.getItem('auth_token');
     return !!savedToken;
   }, [token, loading]); // Recalcular quando token ou loading mudar, mas sempre ler do localStorage
