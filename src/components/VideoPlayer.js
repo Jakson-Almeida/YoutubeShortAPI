@@ -33,12 +33,22 @@ const VideoPlayer = ({ video, onClose }) => {
     const fetchFormats = async () => {
       try {
         setLoadingFormats(true);
-        const response = await fetch(`/api/formats?videoId=${videoId}`);
+        // Usar getAuthHeaders para incluir o token de autenticação
+        const headers = getAuthHeaders();
+        const response = await fetch(`/api/formats?videoId=${videoId}`, {
+          headers: headers
+        });
         if (response.ok) {
           const data = await response.json();
           setFormats(data.formats || []);
           if (data.formats && data.formats.length > 0) {
             setSelectedQuality(data.formats[0].format_id || 'best');
+          }
+        } else if (response.status === 401) {
+          // Se for erro de autenticação, verificar se o token existe
+          const token = localStorage.getItem('auth_token');
+          if (!token) {
+            setShowLoginModal(true);
           }
         }
       } catch (error) {
@@ -49,6 +59,7 @@ const VideoPlayer = ({ video, onClose }) => {
     };
 
     fetchFormats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
 
   // Buscar handle do canal
@@ -157,7 +168,23 @@ const VideoPlayer = ({ video, onClose }) => {
             console.error('Erro recebido via SSE:', data.error);
             eventSource.close();
             downloadCompleted = true;
-            setDownloadError(data.error || 'Erro ao baixar vídeo');
+            
+            // Verificar se é erro de autenticação
+            const errorMessage = data.error || 'Erro ao baixar vídeo';
+            if (errorMessage.includes('autenticação') || errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+              // Verificar se o token existe antes de mostrar modal
+              const token = localStorage.getItem('auth_token');
+              if (!token) {
+                setShowLoginModal(true);
+                setDownloadError('Você precisa estar autenticado para fazer downloads');
+              } else {
+                setDownloadError('Sessão expirada. Faça login novamente.');
+                setShowLoginModal(true);
+              }
+            } else {
+              setDownloadError(errorMessage);
+            }
+            
             setDownloading(false);
             setDownloadProgress(null);
           }
@@ -170,6 +197,9 @@ const VideoPlayer = ({ video, onClose }) => {
         console.error('Erro no EventSource:', error);
         console.log('EventSource readyState:', eventSource.readyState);
         
+        // Verificar se o token existe antes de qualquer ação
+        const token = localStorage.getItem('auth_token');
+        
         // Se o EventSource fechou (readyState === 2), pode ser que o download tenha completado
         if (eventSource.readyState === EventSource.CLOSED) {
           console.log('EventSource fechado. Verificando se download completou...');
@@ -178,8 +208,16 @@ const VideoPlayer = ({ video, onClose }) => {
           setTimeout(() => {
             if (!downloadCompleted) {
               console.log('Tentando baixar do cache...');
-              // Tentar baixar diretamente - o backend pode ter o arquivo em cache
-              handleDownloadFile(selectedQuality);
+              // Se há token, tentar baixar diretamente - o backend pode ter o arquivo em cache
+              if (token) {
+                handleDownloadFile(selectedQuality);
+              } else {
+                // Sem token, mostrar modal
+                setShowLoginModal(true);
+                setDownloadError('Você precisa estar autenticado para fazer downloads');
+                setDownloading(false);
+                setDownloadProgress(null);
+              }
             }
           }, 1000);
         }
@@ -191,8 +229,6 @@ const VideoPlayer = ({ video, onClose }) => {
           // Pode ser erro de autenticação - verificar
           setTimeout(() => {
             if (!downloadCompleted) {
-              // Tentar verificar se é erro de autenticação
-              const token = localStorage.getItem('auth_token');
               if (!token) {
                 // Não há token - mostrar modal de login
                 setShowLoginModal(true);
@@ -200,31 +236,38 @@ const VideoPlayer = ({ video, onClose }) => {
                 setDownloading(false);
                 setDownloadProgress(null);
               } else {
-                // Verificar se o token ainda é válido
+                // Token existe - verificar se ainda é válido antes de mostrar modal
                 fetch(`/api/auth/verify`, {
                   headers: { 'Authorization': `Bearer ${token}` }
                 }).then(res => {
                   if (!res.ok) {
+                    // Token inválido - mostrar modal
                     setShowLoginModal(true);
                     setDownloadError('Sessão expirada. Faça login novamente.');
                     setDownloading(false);
                     setDownloadProgress(null);
                   } else {
-                    // Token válido - tentar download normal sem progresso
+                    // Token válido - tentar download normal sem progresso (não mostrar modal)
                     handleDownloadFallback();
                   }
                 }).catch(() => {
-                  // Erro de rede - tentar download mesmo assim
+                  // Erro de rede - tentar download mesmo assim (não mostrar modal se token existe)
                   handleDownloadFallback();
                 });
               }
             }
           }, 1000);
-        } else if (!downloadCompleted) {
-          // Fallback: tentar download normal sem progresso
+        } else if (!downloadCompleted && token) {
+          // Fallback: tentar download normal sem progresso (só se houver token)
           setTimeout(() => {
             handleDownloadFallback();
           }, 2000);
+        } else if (!downloadCompleted && !token) {
+          // Sem token e erro - mostrar modal
+          setShowLoginModal(true);
+          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          setDownloading(false);
+          setDownloadProgress(null);
         }
       };
 
