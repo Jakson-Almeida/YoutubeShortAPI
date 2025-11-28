@@ -198,8 +198,8 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        # Criar token JWT
-        access_token = create_access_token(identity=user.id)
+        # Criar token JWT (identity deve ser string)
+        access_token = create_access_token(identity=str(user.id))
         
         return jsonify({
             "message": "Usuário criado com sucesso",
@@ -230,8 +230,8 @@ def login():
         if not user or not user.check_password(password):
             return jsonify({"error": "Email ou senha incorretos"}), 401
         
-        # Criar token JWT
-        access_token = create_access_token(identity=user.id)
+        # Criar token JWT (identity deve ser string)
+        access_token = create_access_token(identity=str(user.id))
         
         return jsonify({
             "message": "Login realizado com sucesso",
@@ -250,6 +250,9 @@ def verify():
     """Verificar se token é válido e retornar dados do usuário"""
     try:
         user_id = get_jwt_identity()
+        # Converter para int se necessário (identity pode ser string)
+        if user_id:
+            user_id = int(user_id) if isinstance(user_id, (str, int)) else user_id
         user = User.query.get(user_id)
         
         if not user:
@@ -879,6 +882,9 @@ def download_video():
         from flask_jwt_extended import decode_token
         decoded = decode_token(token)
         user_id = decoded.get('sub')
+        # Converter para int se necessário (sub pode ser string ou int)
+        if user_id:
+            user_id = int(user_id) if isinstance(user_id, (str, int)) else user_id
         if not user_id:
             return jsonify({"error": "Token inválido"}), 401
     except Exception as e:
@@ -992,6 +998,9 @@ def download_with_progress(video_id: str, quality: str):
                 from flask_jwt_extended import decode_token
                 decoded = decode_token(token)
                 user_id = decoded.get('sub')
+                # Converter para int se necessário (sub pode ser string ou int)
+                if user_id:
+                    user_id = int(user_id) if isinstance(user_id, (str, int)) else user_id
                 if not user_id:
                     yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
                     return
@@ -1010,6 +1019,9 @@ def download_with_progress(video_id: str, quality: str):
                 token = auth_header.split(' ')[1]
                 decoded = decode_token(token)
                 user_id = decoded.get('sub')
+                # Converter para int se necessário (sub pode ser string ou int)
+                if user_id:
+                    user_id = int(user_id) if isinstance(user_id, (str, int)) else user_id
                 if not user_id:
                     yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
                     return
@@ -1168,6 +1180,9 @@ def download_with_metadata():
         from flask_jwt_extended import decode_token
         decoded = decode_token(token)
         user_id = decoded.get('sub')
+        # Converter para int se necessário (sub pode ser string ou int)
+        if user_id:
+            user_id = int(user_id) if isinstance(user_id, (str, int)) else user_id
         if not user_id:
             return jsonify({"error": "Token inválido"}), 401
     except Exception as e:
