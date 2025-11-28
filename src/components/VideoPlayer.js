@@ -93,7 +93,9 @@ const VideoPlayer = ({ video, onClose }) => {
 
   const handleDownload = async () => {
     // Verificar autenticação antes de fazer download
-    if (!isAuthenticated) {
+    // Verificar tanto no contexto quanto diretamente no localStorage
+    const hasToken = isAuthenticated || localStorage.getItem('auth_token');
+    if (!hasToken) {
       setShowLoginModal(true);
       return;
     }
@@ -190,21 +192,32 @@ const VideoPlayer = ({ video, onClose }) => {
           setTimeout(() => {
             if (!downloadCompleted) {
               // Tentar verificar se é erro de autenticação
-              fetch(`/api/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-              }).then(res => {
-                if (!res.ok) {
-                  setShowLoginModal(true);
-                  setDownloadError('Sessão expirada. Faça login novamente.');
-                  setDownloading(false);
-                  setDownloadProgress(null);
-                } else {
-                  // Fallback: tentar download normal sem progresso
+              const token = localStorage.getItem('auth_token');
+              if (!token) {
+                // Não há token - mostrar modal de login
+                setShowLoginModal(true);
+                setDownloadError('Você precisa estar autenticado para fazer downloads');
+                setDownloading(false);
+                setDownloadProgress(null);
+              } else {
+                // Verificar se o token ainda é válido
+                fetch(`/api/auth/verify`, {
+                  headers: { 'Authorization': `Bearer ${token}` }
+                }).then(res => {
+                  if (!res.ok) {
+                    setShowLoginModal(true);
+                    setDownloadError('Sessão expirada. Faça login novamente.');
+                    setDownloading(false);
+                    setDownloadProgress(null);
+                  } else {
+                    // Token válido - tentar download normal sem progresso
+                    handleDownloadFallback();
+                  }
+                }).catch(() => {
+                  // Erro de rede - tentar download mesmo assim
                   handleDownloadFallback();
-                }
-              }).catch(() => {
-                handleDownloadFallback();
-              });
+                });
+              }
             }
           }, 1000);
         } else if (!downloadCompleted) {
@@ -242,8 +255,16 @@ const VideoPlayer = ({ video, onClose }) => {
       
       if (!response.ok) {
         if (response.status === 401) {
-          setShowLoginModal(true);
-          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          // Verificar se o token ainda existe no localStorage antes de mostrar modal
+          const token = localStorage.getItem('auth_token');
+          if (!token) {
+            setShowLoginModal(true);
+            setDownloadError('Você precisa estar autenticado para fazer downloads');
+          } else {
+            // Token existe mas foi rejeitado - pode estar expirado
+            setDownloadError('Sessão expirada. Faça login novamente.');
+            setShowLoginModal(true);
+          }
           setDownloading(false);
           setDownloadProgress(null);
           return;
@@ -317,8 +338,16 @@ const VideoPlayer = ({ video, onClose }) => {
       
       if (!response.ok) {
         if (response.status === 401) {
-          setShowLoginModal(true);
-          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          // Verificar se o token ainda existe no localStorage antes de mostrar modal
+          const token = localStorage.getItem('auth_token');
+          if (!token) {
+            setShowLoginModal(true);
+            setDownloadError('Você precisa estar autenticado para fazer downloads');
+          } else {
+            // Token existe mas foi rejeitado - pode estar expirado
+            setDownloadError('Sessão expirada. Faça login novamente.');
+            setShowLoginModal(true);
+          }
           setDownloading(false);
           setDownloadProgress(null);
           return;
