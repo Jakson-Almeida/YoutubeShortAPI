@@ -273,6 +273,49 @@ export const AuthProvider = ({ children }) => {
     return result;
   }, [token, loading]); // Recalcular quando token ou loading mudar, mas sempre ler do localStorage
 
+  // Função de debug para inspecionar o localStorage (apenas em desenvolvimento)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' || window.location.hostname.includes('localhost')) {
+      // Expor função global para debug do localStorage
+      window.debugAuth = () => {
+        const token = localStorage.getItem('auth_token');
+        console.log('=== DEBUG AUTENTICAÇÃO ===');
+        console.log('Token no localStorage:', token ? 'PRESENTE' : 'AUSENTE');
+        if (token) {
+          try {
+            // Decodificar JWT para ver informações (sem verificar assinatura)
+            const parts = token.split('.');
+            if (parts.length === 3) {
+              const payload = JSON.parse(atob(parts[1]));
+              console.log('Token decodificado:', {
+                user_id: payload.sub,
+                expira_em: new Date(payload.exp * 1000).toLocaleString('pt-BR'),
+                expirado: Date.now() > payload.exp * 1000,
+                criado_em: new Date(payload.iat * 1000).toLocaleString('pt-BR')
+              });
+            }
+          } catch (e) {
+            console.log('Erro ao decodificar token:', e);
+          }
+        }
+        console.log('Estado React:', {
+          token: token ? 'PRESENTE' : 'AUSENTE',
+          user: user,
+          loading: loading,
+          isAuthenticated: isAuthenticated
+        });
+        console.log('========================');
+        return {
+          localStorage: { token: token ? 'PRESENTE' : 'AUSENTE' },
+          reactState: { token: !!token, user, loading, isAuthenticated }
+        };
+      };
+      
+      console.log('%c🔍 Debug de Autenticação disponível!', 'color: #4CAF50; font-weight: bold; font-size: 14px');
+      console.log('Digite debugAuth() no console para verificar o estado da autenticação');
+    }
+  }, [user, loading, isAuthenticated]);
+
   const value = {
     user,
     token,
