@@ -12,7 +12,7 @@ import Register from '../components/Auth/Register';
 import UserMenu from '../components/UserMenu';
 
 function HomePage() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [loading, setLoading] = useState(false);

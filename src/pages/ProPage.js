@@ -21,7 +21,6 @@ function ProPage() {
   const [error, setError] = useState(null);
   const [currentSearchType, setCurrentSearchType] = useState(null); // 'videos' ou 'channels'
   const [hasSearched, setHasSearched] = useState(false);
-  const [initialLoad, setInitialLoad] = useState(true);
   const [advancedOptions, setAdvancedOptions] = useState({
     allowMultipleDownloads: false,
     saveVideo: true,
@@ -53,15 +52,11 @@ function ProPage() {
         setVideos(lastSearch.results);
         setCurrentSearchType('videos');
         setHasSearched(true);
-        setInitialLoad(false);
       } else if (lastSearch.type === 'channels') {
         setChannels(lastSearch.results);
         setCurrentSearchType('channels');
         setHasSearched(true);
-        setInitialLoad(false);
       }
-    } else {
-      setInitialLoad(false);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
