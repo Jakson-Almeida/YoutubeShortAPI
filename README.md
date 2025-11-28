@@ -70,7 +70,7 @@ Para habilitar downloads funcionais, foi adicionado um backend em Python que uti
 2. **pytube** (FALLBACK) - Usado automaticamente se yt-dlp falhar
 
 ### 📦 Instalação:
-
+  
 1. **Crie e ative o ambiente virtual**:
 
    **No Windows (PowerShell):**

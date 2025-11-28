@@ -221,7 +221,7 @@ const VideoPlayer = ({ video, onClose }) => {
       setTimeout(() => {
         if (!downloadCompleted) {
           eventSource.close();
-          setDownloadError('Timeout: O download demorou muito. Tente novamente.');
+          setDownloadError('O download demorou muito. Tente novamente.');
           setDownloading(false);
           setDownloadProgress(null);
         }
@@ -245,14 +245,12 @@ const VideoPlayer = ({ video, onClose }) => {
       if (!response.ok) {
         if (response.status === 401) {
           setShowLoginModal(true);
-          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          setDownloadError('Faça login para baixar vídeos.');
           setDownloading(false);
           setDownloadProgress(null);
           return;
         }
-        const errorText = await response.text();
-        console.error('Resposta de erro do servidor:', errorText);
-        throw new Error(`Erro ao baixar arquivo: ${response.status} ${response.statusText}`);
+        throw new Error('Erro ao processar download. Tente novamente.');
       }
 
       // Obter filename do header Content-Disposition se não foi fornecido
@@ -304,7 +302,7 @@ const VideoPlayer = ({ video, onClose }) => {
       setDownloadProgress(null);
     } catch (error) {
       console.error('Erro ao baixar arquivo:', error);
-      setDownloadError(`Erro ao baixar arquivo: ${error.message}. Tente novamente.`);
+          setDownloadError('Erro ao baixar vídeo. Tente novamente.');
       setDownloading(false);
       setDownloadProgress(null);
     }
@@ -320,7 +318,7 @@ const VideoPlayer = ({ video, onClose }) => {
       if (!response.ok) {
         if (response.status === 401) {
           setShowLoginModal(true);
-          setDownloadError('Você precisa estar autenticado para fazer downloads');
+          setDownloadError('Faça login para baixar vídeos.');
           setDownloading(false);
           setDownloadProgress(null);
           return;

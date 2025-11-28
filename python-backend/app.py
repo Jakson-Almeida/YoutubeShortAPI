@@ -25,7 +25,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configuração JWT
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY') or 'your-secret-key-change-in-production'
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Token expira em 7 dias
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=365)  # Token expira em 1 ano
 
 # Inicializar extensões
 db.init_app(app)
@@ -211,7 +211,7 @@ def register():
     except Exception as e:
         db.session.rollback()
         app.logger.error(f"Erro ao registrar usuário: {str(e)}")
-        return jsonify({"error": "Erro ao processar registro"}), 500
+        return jsonify({"error": "Não foi possível criar sua conta. Tente novamente."}), 500
 
 
 @app.post("/api/auth/login")
@@ -242,7 +242,7 @@ def login():
         
     except Exception as e:
         app.logger.error(f"Erro ao fazer login: {str(e)}")
-        return jsonify({"error": "Erro ao processar login"}), 500
+        return jsonify({"error": "Não foi possível fazer login. Tente novamente."}), 500
 
 
 @app.get("/api/auth/verify")
@@ -263,7 +263,7 @@ def verify():
         
     except Exception as e:
         app.logger.error(f"Erro ao verificar token: {str(e)}")
-        return jsonify({"error": "Token inválido"}), 401
+        return jsonify({"error": "Sessão inválida. Faça login novamente."}), 401
 
 
 @app.post("/api/auth/logout")
@@ -994,7 +994,7 @@ def download_with_progress(video_id: str, quality: str):
                 decoded = decode_token(token)
                 user_id = decoded.get('sub')
                 if not user_id:
-                    yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Sessão expirada. Faça login novamente.'})}\n\n"
                     return
             except Exception as e:
                 app.logger.error(f"Erro ao verificar token SSE: {str(e)}")
@@ -1004,7 +1004,7 @@ def download_with_progress(video_id: str, quality: str):
             # Tentar verificar via header Authorization (fallback)
             auth_header = request.headers.get('Authorization')
             if not auth_header or not auth_header.startswith('Bearer '):
-                yield f"data: {json.dumps({'status': 'error', 'error': 'Autenticação necessária'})}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Faça login para continuar.'})}\n\n"
                 return
             try:
                 from flask_jwt_extended import decode_token
@@ -1012,7 +1012,7 @@ def download_with_progress(video_id: str, quality: str):
                 decoded = decode_token(token)
                 user_id = decoded.get('sub')
                 if not user_id:
-                    yield f"data: {json.dumps({'status': 'error', 'error': 'Token inválido'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Sessão expirada. Faça login novamente.'})}\n\n"
                     return
             except Exception as e:
                 app.logger.error(f"Erro ao verificar token SSE: {str(e)}")

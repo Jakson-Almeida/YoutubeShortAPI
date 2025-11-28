@@ -63,3 +63,5 @@ const UserMenu = ({ user, logout, currentPage, onLogin, onRegister }) => {
 
 export default UserMenu;
 
+
+

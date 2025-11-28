@@ -12,6 +12,8 @@ import { saveLastSearchPro, getLastSearchPro } from '../utils/searchHistory';
 import { useAuth } from '../contexts/AuthContext';
 import UserMenu from '../components/UserMenu';
 
+import API_BASE_URL from '../config';
+
 function ProPage() {
   const { user, logout, getAuthHeaders } = useAuth();
   const [videos, setVideos] = useState([]);
@@ -538,7 +540,7 @@ function ProPage() {
           });
 
           const headers = getAuthHeaders();
-          const response = await fetch(`/api/download-with-metadata?${params.toString()}`, {
+          const response = await fetch(`${API_BASE_URL}/api/download-with-metadata?${params.toString()}`, {
             headers: headers
           });
           
@@ -546,7 +548,7 @@ function ProPage() {
             if (response.status === 401) {
               throw new Error('Sessão expirada. Faça login novamente.');
             }
-            throw new Error(`Erro ao baixar vídeo ${videoId}`);
+            throw new Error('Erro ao baixar vídeo. Tente novamente.');
           }
 
           // Baixar arquivo (ZIP se tem metadados, MP4 se só vídeo)
