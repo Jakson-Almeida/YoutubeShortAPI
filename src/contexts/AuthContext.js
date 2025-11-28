@@ -17,17 +17,16 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
 
-  // Carregar token do localStorage ao montar
+  // Carregar token do localStorage ao montar - SEM verificação automática
+  // IMPORTANTE: Não remover o token aqui - apenas carregar
   useEffect(() => {
     const savedToken = localStorage.getItem('auth_token');
     if (savedToken) {
       setToken(savedToken);
-      // Não verificar token automaticamente - confiar no token até que seja explicitamente invalidado
+      // Não verificar o token automaticamente - confiar que se está no localStorage, é válido
       // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
-      setLoading(false);
-    } else {
-      setLoading(false);
     }
+    setLoading(false);
   }, []);
 
   const verifyToken = async (authToken) => {
@@ -43,22 +42,24 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+        return true;
       } else if (response.status === 401) {
         // Token realmente inválido - remover apenas neste caso
+        console.log('[AuthContext] verifyToken - Token inválido (401), removendo...');
         localStorage.removeItem('auth_token');
         setToken(null);
         setUser(null);
+        return false;
       } else {
         // Outros erros (rede, servidor, etc) - manter token mas não setar user
         // O token ainda pode ser válido, apenas não conseguimos verificar agora
         console.warn('Erro ao verificar token, mas mantendo sessão:', response.status);
+        return true; // Assumir válido se não for 401
       }
     } catch (error) {
       // Erro de rede - não remover token, pode ser temporário
       console.warn('Erro de conexão ao verificar token, mantendo sessão:', error);
-      // Não remover token em caso de erro de rede
-    } finally {
-      setLoading(false);
+      return true; // Assumir válido em caso de erro de rede
     }
   };
 
@@ -128,6 +129,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     } finally {
+      console.log('[AuthContext] logout - Removendo token e limpando estado');
       setToken(null);
       setUser(null);
       localStorage.removeItem('auth_token');
@@ -145,22 +147,24 @@ export const AuthProvider = ({ children }) => {
     return { 'Content-Type': 'application/json' };
   };
 
-  // Sincronizar token do localStorage quando componente monta ou quando token muda
-  useEffect(() => {
-    const savedToken = localStorage.getItem('auth_token');
-    if (savedToken && savedToken !== token) {
-      setToken(savedToken);
-    }
-  }, [token]);
-
-  // Sempre verificar localStorage diretamente para garantir que não perdemos a autenticação
+  // isAuthenticated SEMPRE verifica localStorage diretamente - é a fonte única da verdade
+  // IMPORTANTE: Mesmo durante loading, se há token no localStorage, o usuário está autenticado
+  // Usa token como dependência apenas para causar re-renderização quando login/logout acontecer
   const isAuthenticated = useMemo(() => {
-    // Sempre verificar localStorage primeiro - é a fonte da verdade
-    if (typeof localStorage !== 'undefined') {
-      return !!localStorage.getItem('auth_token');
+    if (typeof localStorage === 'undefined') {
+      // Fallback: usar estado do token se localStorage não estiver disponível
+      return !!token;
     }
-    return !!token;
-  }, [token]);
+    // SEMPRE ler do localStorage - é a fonte única da verdade
+    // Não depender do estado 'loading' - se há token no localStorage, o usuário está autenticado
+    const savedToken = localStorage.getItem('auth_token');
+    const result = !!savedToken;
+    // Log apenas quando mudar (para não poluir o console)
+    if (result !== (token ? true : false)) {
+      console.log('[AuthContext] isAuthenticated mudou - localStorage tem token:', result, 'estado token:', !!token);
+    }
+    return result;
+  }, [token]); // Recalcular quando token muda (login/logout), mas sempre ler do localStorage
 
   const value = {
     user,

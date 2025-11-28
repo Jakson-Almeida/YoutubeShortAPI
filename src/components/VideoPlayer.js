@@ -96,7 +96,10 @@ const VideoPlayer = ({ video, onClose }) => {
   const handleDownload = async () => {
     // Verificar se há token - se não houver, mostrar modal de login
     const token = localStorage.getItem('auth_token');
+    console.log('[VideoPlayer] handleDownload - token no localStorage:', token ? 'EXISTE' : 'NÃO EXISTE');
+    console.log('[VideoPlayer] handleDownload - isAuthenticated do contexto:', isAuthenticated);
     if (!token) {
+      console.log('[VideoPlayer] handleDownload - Não há token, mostrando modal de login');
       setShowLoginModal(true);
       return;
     }
