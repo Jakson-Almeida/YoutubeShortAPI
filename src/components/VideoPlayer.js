@@ -4,8 +4,10 @@ import { markVideoAsDownloaded } from '../utils/downloadHistory';
 import { useAuth } from '../contexts/AuthContext';
 import Login from './Auth/Login';
 
+import API_BASE_URL from '../config';
+
 const VideoPlayer = ({ video, onClose }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, getAuthHeaders } = useAuth();
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(null);
   const [formats, setFormats] = useState([]);
@@ -33,7 +35,7 @@ const VideoPlayer = ({ video, onClose }) => {
     const fetchFormats = async () => {
       try {
         setLoadingFormats(true);
-        const response = await fetch(`/api/formats?videoId=${videoId}`);
+        const response = await fetch(`${API_BASE_URL}/api/formats?videoId=${videoId}`);
         if (response.ok) {
           const data = await response.json();
           setFormats(data.formats || []);
@@ -106,7 +108,7 @@ const VideoPlayer = ({ video, onClose }) => {
       // EventSource não suporta headers customizados, então passamos o token na query string
       // O backend irá verificar o token da query string para SSE
       const token = localStorage.getItem('auth_token');
-      const eventSourceUrl = `/api/download?videoId=${videoId}&quality=${selectedQuality}&progress=true${token ? `&token=${token}` : ''}`;
+      const eventSourceUrl = `${API_BASE_URL}/api/download?videoId=${videoId}&quality=${selectedQuality}&progress=true${token ? `&token=${token}` : ''}`;
       const eventSource = new EventSource(eventSourceUrl);
 
       let downloadCompleted = false;
@@ -190,7 +192,7 @@ const VideoPlayer = ({ video, onClose }) => {
           setTimeout(() => {
             if (!downloadCompleted) {
               // Tentar verificar se é erro de autenticação
-              fetch(`/api/auth/verify`, {
+              fetch(`${API_BASE_URL}/api/auth/verify`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
               }).then(res => {
                 if (!res.ok) {
@@ -235,9 +237,8 @@ const VideoPlayer = ({ video, onClose }) => {
   const handleDownloadFile = async (quality, filename) => {
     try {
       console.log(`Baixando arquivo: videoId=${videoId}, quality=${quality}, filename=${filename || 'não fornecido'}`);
-      const { getAuthHeaders } = useAuth();
       const headers = getAuthHeaders();
-      const response = await fetch(`/api/download?videoId=${videoId}&quality=${quality}`, {
+      const response = await fetch(`${API_BASE_URL}/api/download?videoId=${videoId}&quality=${quality}`, {
         headers: headers
       });
       
@@ -311,9 +312,8 @@ const VideoPlayer = ({ video, onClose }) => {
 
   const handleDownloadFallback = async () => {
     try {
-      const { getAuthHeaders } = useAuth();
       const headers = getAuthHeaders();
-      const response = await fetch(`/api/download?videoId=${videoId}&quality=${selectedQuality}`, {
+      const response = await fetch(`${API_BASE_URL}/api/download?videoId=${videoId}&quality=${selectedQuality}`, {
         headers: headers
       });
       
