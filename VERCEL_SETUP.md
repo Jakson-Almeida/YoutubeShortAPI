@@ -49,11 +49,22 @@ Este guia mostra como fazer o deploy do frontend React no Vercel e conectá-lo a
    - **Value:** Sua chave da API do YouTube
    - **Environment:** Production, Preview, Development (marque todos)
 
-## 🚀 Passo 4: Fazer Deploy
+## 🌿 Passo 4: Configurar a Branch de Produção
+
+**IMPORTANTE:** Configure o Vercel para usar a branch `main` (não `local`)
+
+1. Acesse o [Vercel Dashboard](https://vercel.com/dashboard)
+2. Clique no seu projeto
+3. Vá para **Settings** > **Git**
+4. Na seção **Production Branch**, certifique-se de que está configurado como `main`
+5. Se estiver como `local` ou outra branch, altere para `main`
+6. Salve as alterações
+
+## 🚀 Passo 5: Fazer Deploy
 
 ### Opção 1: Via GitHub (Recomendado)
 
-1. Commit e push das alterações para o GitHub
+1. Commit e push das alterações para a branch `main` no GitHub
 2. O Vercel detectará automaticamente e fará o deploy
 
 ### Opção 2: Via CLI do Vercel
@@ -78,7 +89,7 @@ Este guia mostra como fazer o deploy do frontend React no Vercel e conectá-lo a
    vercel --prod
    ```
 
-## ✅ Passo 5: Verificar o Deploy
+## ✅ Passo 6: Verificar o Deploy
 
 Após o deploy:
 
