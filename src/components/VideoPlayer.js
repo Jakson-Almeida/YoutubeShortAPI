@@ -482,10 +482,6 @@ const VideoPlayer = ({ video, onClose }) => {
               {downloadError && (
                 <div className="download-error">
                   <p>⚠️ {downloadError}</p>
-                  <p className="download-alternative">
-                    Você pode copiar o ID do vídeo: <strong>{videoId}</strong> e usar 
-                    serviços online como y2mate.com ou savefrom.net
-                  </p>
                 </div>
               )}
 
