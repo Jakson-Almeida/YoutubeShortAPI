@@ -41,17 +41,21 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-      } else {
-        // Token inválido, remover
+      } else if (response.status === 401) {
+        // Apenas remover se for realmente um token inválido (401)
+        // Erros de rede ou outros erros não devem deslogar o usuário
         localStorage.removeItem('auth_token');
         setToken(null);
         setUser(null);
+      } else {
+        // Outros erros (rede, servidor, etc) - manter token mas não setar user
+        // O token ainda pode ser válido, apenas não conseguimos verificar agora
+        console.warn('Erro ao verificar token, mas mantendo sessão:', response.status);
       }
     } catch (error) {
-      console.error('Erro ao verificar token:', error);
-      localStorage.removeItem('auth_token');
-      setToken(null);
-      setUser(null);
+      // Erro de rede - não remover token, pode ser temporário
+      console.warn('Erro de conexão ao verificar token, mantendo sessão:', error);
+      // Não remover token em caso de erro de rede
     } finally {
       setLoading(false);
     }
@@ -130,9 +134,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const getAuthHeaders = () => {
-    if (token) {
+    const authToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null);
+    if (authToken) {
       return {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${authToken}`,
         'Content-Type': 'application/json'
       };
     }
@@ -146,7 +151,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    isAuthenticated: !!user && !!token,
+    isAuthenticated: !!token || (typeof localStorage !== 'undefined' && !!localStorage.getItem('auth_token')),
     getAuthHeaders
   };
 

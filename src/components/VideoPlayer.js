@@ -94,8 +94,9 @@ const VideoPlayer = ({ video, onClose }) => {
   };
 
   const handleDownload = async () => {
-    // Verificar autenticação antes de fazer download
-    if (!isAuthenticated) {
+    // Verificar se há token - se não houver, mostrar modal de login
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
       setShowLoginModal(true);
       return;
     }
@@ -192,21 +193,8 @@ const VideoPlayer = ({ video, onClose }) => {
           setTimeout(() => {
             if (!downloadCompleted) {
               // Tentar verificar se é erro de autenticação
-              fetch(`${API_BASE_URL}/api/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-              }).then(res => {
-                if (!res.ok) {
-                  setShowLoginModal(true);
-                  setDownloadError('Sessão expirada. Faça login novamente.');
-                  setDownloading(false);
-                  setDownloadProgress(null);
-                } else {
-                  // Fallback: tentar download normal sem progresso
-                  handleDownloadFallback();
-                }
-              }).catch(() => {
-                handleDownloadFallback();
-              });
+              // Se há token, tentar download. Se falhar, o backend retornará 401
+              handleDownloadFallback();
             }
           }, 1000);
         } else if (!downloadCompleted) {
