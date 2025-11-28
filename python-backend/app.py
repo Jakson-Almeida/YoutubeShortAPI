@@ -200,7 +200,7 @@ def register():
         db.session.commit()
         
         # Criar token JWT
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
         
         return jsonify({
             "message": "Usuário criado com sucesso",
@@ -232,7 +232,7 @@ def login():
             return jsonify({"error": "Email ou senha incorretos"}), 401
         
         # Criar token JWT
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
         
         return jsonify({
             "message": "Login realizado com sucesso",
@@ -251,7 +251,12 @@ def verify():
     """Verificar se token é válido e retornar dados do usuário"""
     try:
         user_id = get_jwt_identity()
-        user = User.query.get(user_id)
+        try:
+            user_id_int = int(user_id)
+        except (TypeError, ValueError):
+            app.logger.error("Identidade do token inválida: %s", user_id)
+            return jsonify({"error": "Sessão inválida. Faça login novamente."}), 401
+        user = User.query.get(user_id_int)
         
         if not user:
             return jsonify({"error": "Usuário não encontrado"}), 404
