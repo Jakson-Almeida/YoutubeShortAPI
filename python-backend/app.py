@@ -470,6 +470,18 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 'noplaylist': True,
                 'extract_flat': False,
                 'verbose': True,  # Modo verbose para ver tudo
+                # Headers mais realistas para evitar detecção de bot
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                },
+                # Tentar usar cookies se disponíveis (pode ajudar com detecção de bot)
+                'cookiefile': None,  # Pode ser configurado via variável de ambiente se necessário
             }
             
             # Adicionar hook de progresso se callback fornecido
@@ -775,9 +787,17 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     return True, buffer, filename, None
 
         except Exception as exc:  # pylint: disable=broad-except
-            app.logger.warning("Erro ao baixar com yt-dlp (%s): %s", video_url, str(exc))
+            error_msg = str(exc)
+            app.logger.warning("Erro ao baixar com yt-dlp (%s): %s", video_url, error_msg)
             import traceback
             app.logger.debug(traceback.format_exc())
+            
+            # Verificar se é erro de bloqueio do YouTube (bot detection)
+            if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s", video_id)
+                # Retornar erro específico para bot detection
+                return False, None, None, "YouTube bloqueou temporariamente a requisição. Tente novamente em alguns minutos."
+            
             continue
     
     return False, None, None, "Não foi possível processar o download"
@@ -937,6 +957,7 @@ def download_video():
 
     # Download normal sem progresso
     # TENTATIVA 1: yt-dlp (PRIMEIRA PRIORIDADE)
+    yt_dlp_error = None
     if YT_DLP_AVAILABLE:
         app.logger.info("Tentando download com yt-dlp (método prioritário) para vídeo: %s (qualidade: %s)", video_id, quality)
         success, buffer, filename, error_msg = download_with_ytdlp(video_id, quality)
@@ -949,6 +970,7 @@ def download_video():
                 mimetype="video/mp4"
             )
         else:
+            yt_dlp_error = error_msg
             app.logger.warning("yt-dlp falhou: %s. Tentando pytube como fallback...", error_msg)
     else:
         app.logger.warning("yt-dlp não disponível. Usando pytube...")
@@ -967,6 +989,22 @@ def download_video():
             )
         else:
             app.logger.error("pytube também falhou: %s", error_msg)
+            
+            # Verificar se foi erro de bot detection do YouTube
+            is_bot_detection = False
+            if yt_dlp_error and ("bloqueou" in yt_dlp_error.lower() or "bot" in yt_dlp_error.lower()):
+                is_bot_detection = True
+            elif error_msg and ("bloqueou" in str(error_msg).lower() or "bot" in str(error_msg).lower()):
+                is_bot_detection = True
+            
+            if is_bot_detection:
+                # Mensagem específica para bloqueio do YouTube
+                app.logger.error("YouTube bloqueou as requisições (detecção de bot)")
+                return jsonify({
+                    "error": "Serviço temporariamente indisponível",
+                    "message": "O YouTube bloqueou temporariamente as requisições. Tente novamente em alguns minutos."
+                }), 503
+            
             # Mensagem genérica - não expor detalhes técnicos
             return jsonify({
                 "error": "Falha no download",
