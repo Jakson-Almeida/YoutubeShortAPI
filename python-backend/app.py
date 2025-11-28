@@ -13,7 +13,7 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 import json
 import threading
 
-from models import db, User
+from models import db, User, bcrypt
 
 app = Flask(__name__)
 
@@ -29,6 +29,7 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Token expira em 7 
 
 # Inicializar extensões
 db.init_app(app)
+bcrypt.init_app(app)
 jwt = JWTManager(app)
 CORS(app, supports_credentials=True)
 
