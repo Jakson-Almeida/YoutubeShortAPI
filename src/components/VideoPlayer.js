@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Login from './Auth/Login';
 
 const VideoPlayer = ({ video, onClose }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, getAuthHeaders } = useAuth();
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(null);
   const [formats, setFormats] = useState([]);
@@ -235,7 +235,6 @@ const VideoPlayer = ({ video, onClose }) => {
   const handleDownloadFile = async (quality, filename) => {
     try {
       console.log(`Baixando arquivo: videoId=${videoId}, quality=${quality}, filename=${filename || 'não fornecido'}`);
-      const { getAuthHeaders } = useAuth();
       const headers = getAuthHeaders();
       const response = await fetch(`/api/download?videoId=${videoId}&quality=${quality}`, {
         headers: headers
@@ -311,7 +310,6 @@ const VideoPlayer = ({ video, onClose }) => {
 
   const handleDownloadFallback = async () => {
     try {
-      const { getAuthHeaders } = useAuth();
       const headers = getAuthHeaders();
       const response = await fetch(`/api/download?videoId=${videoId}&quality=${selectedQuality}`, {
         headers: headers
