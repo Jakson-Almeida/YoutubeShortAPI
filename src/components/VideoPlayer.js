@@ -96,10 +96,7 @@ const VideoPlayer = ({ video, onClose }) => {
   const handleDownload = async () => {
     // Verificar se há token - se não houver, mostrar modal de login
     const token = localStorage.getItem('auth_token');
-    console.log('[VideoPlayer] handleDownload - token no localStorage:', token ? 'EXISTE' : 'NÃO EXISTE');
-    console.log('[VideoPlayer] handleDownload - isAuthenticated do contexto:', isAuthenticated);
     if (!token) {
-      console.log('[VideoPlayer] handleDownload - Não há token, mostrando modal de login');
       setShowLoginModal(true);
       return;
     }
@@ -174,30 +171,21 @@ const VideoPlayer = ({ video, onClose }) => {
         console.error('Erro no EventSource:', error);
         console.log('EventSource readyState:', eventSource.readyState);
         
+        // Verificar se foi erro 401 (autenticação) - EventSource não retorna status HTTP diretamente
+        // Mas podemos verificar se o erro ocorreu logo após conectar (readyState === 1 ou 2)
+        eventSource.close();
+        
         // Se o EventSource fechou (readyState === 2), pode ser que o download tenha completado
-        if (eventSource.readyState === EventSource.CLOSED) {
-          console.log('EventSource fechado. Verificando se download completou...');
+        // ou que houve erro de autenticação
+        if (eventSource.readyState === EventSource.CLOSED && !downloadCompleted) {
+          console.log('EventSource fechado. Verificando se foi erro de autenticação...');
           
           // Aguardar um pouco e verificar se podemos baixar do cache
           setTimeout(() => {
             if (!downloadCompleted) {
+              // Tentar baixar - se for 401, será tratado em handleDownloadFile
               console.log('Tentando baixar do cache...');
-              // Tentar baixar diretamente - o backend pode ter o arquivo em cache
               handleDownloadFile(selectedQuality);
-            }
-          }, 1000);
-        }
-        
-        eventSource.close();
-        
-        // Verificar se foi erro de autenticação
-        if (eventSource.readyState === EventSource.CLOSED && !downloadCompleted) {
-          // Pode ser erro de autenticação - verificar
-          setTimeout(() => {
-            if (!downloadCompleted) {
-              // Tentar verificar se é erro de autenticação
-              // Se há token, tentar download. Se falhar, o backend retornará 401
-              handleDownloadFallback();
             }
           }, 1000);
         } else if (!downloadCompleted) {
@@ -235,10 +223,15 @@ const VideoPlayer = ({ video, onClose }) => {
       
       if (!response.ok) {
         if (response.status === 401) {
+          // Token inválido/expirado - remover do localStorage e mostrar login
+          console.log('[VideoPlayer] Token inválido (401), removendo e mostrando login');
+          localStorage.removeItem('auth_token');
           setShowLoginModal(true);
-          setDownloadError('Faça login para baixar vídeos.');
+          setDownloadError('Sessão expirada. Faça login novamente.');
           setDownloading(false);
           setDownloadProgress(null);
+          // Disparar evento para atualizar AuthContext
+          window.dispatchEvent(new CustomEvent('auth_token_removed'));
           return;
         }
         throw new Error('Erro ao processar download. Tente novamente.');
@@ -308,10 +301,15 @@ const VideoPlayer = ({ video, onClose }) => {
       
       if (!response.ok) {
         if (response.status === 401) {
+          // Token inválido/expirado - remover do localStorage e mostrar login
+          console.log('[VideoPlayer] Token inválido (401) no fallback, removendo e mostrando login');
+          localStorage.removeItem('auth_token');
           setShowLoginModal(true);
-          setDownloadError('Faça login para baixar vídeos.');
+          setDownloadError('Sessão expirada. Faça login novamente.');
           setDownloading(false);
           setDownloadProgress(null);
+          // Disparar evento para atualizar AuthContext
+          window.dispatchEvent(new CustomEvent('auth_token_removed'));
           return;
         }
         let message = 'Serviço de download não disponível.';

@@ -27,6 +27,19 @@ export const AuthProvider = ({ children }) => {
       // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
     }
     setLoading(false);
+
+    // Listener para quando o token for removido externamente (ex: após 401)
+    const handleTokenRemoved = () => {
+      console.log('[AuthContext] Evento auth_token_removed recebido, limpando estado');
+      setToken(null);
+      setUser(null);
+    };
+
+    window.addEventListener('auth_token_removed', handleTokenRemoved);
+
+    return () => {
+      window.removeEventListener('auth_token_removed', handleTokenRemoved);
+    };
   }, []);
 
   const verifyToken = async (authToken) => {
@@ -147,6 +160,21 @@ export const AuthProvider = ({ children }) => {
     return { 'Content-Type': 'application/json' };
   };
 
+  // Sincronizar token do localStorage quando detectamos dessincronização
+  useEffect(() => {
+    const savedToken = localStorage.getItem('auth_token');
+    if (savedToken && savedToken !== token) {
+      // Há token no localStorage mas não no estado - sincronizar
+      console.log('[AuthContext] Sincronizando token do localStorage para o estado');
+      setToken(savedToken);
+    } else if (!savedToken && token) {
+      // Token foi removido do localStorage externamente - limpar estado
+      console.log('[AuthContext] Token removido do localStorage, limpando estado');
+      setToken(null);
+      setUser(null);
+    }
+  }, [token]);
+
   // isAuthenticated SEMPRE verifica localStorage diretamente - é a fonte única da verdade
   // IMPORTANTE: Mesmo durante loading, se há token no localStorage, o usuário está autenticado
   // Usa token como dependência apenas para causar re-renderização quando login/logout acontecer
@@ -158,12 +186,7 @@ export const AuthProvider = ({ children }) => {
     // SEMPRE ler do localStorage - é a fonte única da verdade
     // Não depender do estado 'loading' - se há token no localStorage, o usuário está autenticado
     const savedToken = localStorage.getItem('auth_token');
-    const result = !!savedToken;
-    // Log apenas quando mudar (para não poluir o console)
-    if (result !== (token ? true : false)) {
-      console.log('[AuthContext] isAuthenticated mudou - localStorage tem token:', result, 'estado token:', !!token);
-    }
-    return result;
+    return !!savedToken;
   }, [token]); // Recalcular quando token muda (login/logout), mas sempre ler do localStorage
 
   const value = {
