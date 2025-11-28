@@ -22,8 +22,9 @@ export const AuthProvider = ({ children }) => {
     const savedToken = localStorage.getItem('auth_token');
     if (savedToken) {
       setToken(savedToken);
-      // Verificar token em background, mas não bloquear nem remover se falhar
-      verifyToken(savedToken);
+      // Não verificar token automaticamente - confiar no token até que seja explicitamente invalidado
+      // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
+      setLoading(false);
     } else {
       setLoading(false);
     }
@@ -43,8 +44,7 @@ export const AuthProvider = ({ children }) => {
         const data = await response.json();
         setUser(data.user);
       } else if (response.status === 401) {
-        // Apenas remover se for realmente um token inválido (401)
-        // Erros de rede ou outros erros não devem deslogar o usuário
+        // Token realmente inválido - remover apenas neste caso
         localStorage.removeItem('auth_token');
         setToken(null);
         setUser(null);
