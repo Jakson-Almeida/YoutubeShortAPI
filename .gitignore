@@ -32,6 +32,8 @@ python-backend/.venv/
 python-backend/*.pyc
 python-backend/*.db
 *.db
+python-backend/cookies.txt
+cookies.txt
 
 
 

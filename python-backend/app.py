@@ -298,11 +298,11 @@ def get_video_formats():
 
     for video_url in candidate_urls:
         try:
-            ydl_opts = {
-                'listformats': True,
-                'quiet': True,
-                'no_warnings': True,
-            }
+            # Obter cookies de variável de ambiente se disponível
+            cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+            
+            # Usar configurações otimizadas para evitar detecção de bot
+            ydl_opts = get_ydl_opts_base(cookies_file=cookies_file, quiet=True, listformats=True)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=False)
@@ -403,6 +403,82 @@ def get_video_formats():
     }), 503
 
 
+def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, listformats=False):
+    """
+    Retorna configurações base otimizadas do yt-dlp para evitar detecção de bot.
+    Inclui headers realistas e opções específicas do extractor do YouTube.
+    
+    Args:
+        format_selector: String de formato ou None (para listagem de formatos)
+        cookies_file: Caminho para arquivo de cookies (opcional)
+        quiet: Se True, reduz output
+        listformats: Se True, apenas lista formatos sem baixar
+    """
+    # User-Agent mais recente e realista (Chrome 131 - Janeiro 2025)
+    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    
+    opts = {
+        'quiet': quiet,
+        'no_warnings': quiet,
+        'noplaylist': True,
+        'extract_flat': False,
+        'verbose': not quiet,
+        
+        # Headers muito mais realistas para evitar detecção
+        'http_headers': {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+        },
+        
+        # Opções específicas do extractor do YouTube para evitar detecção
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],  # Tentar clientes diferentes
+                'player_skip': ['webpage'],  # Pular página web quando possível
+            }
+        },
+        
+        # Usar cookies se disponíveis
+        'cookiefile': cookies_file if cookies_file and os.path.exists(cookies_file) else None,
+        
+        # Outras opções para melhorar compatibilidade
+        'no_check_certificate': False,
+        'prefer_insecure': False,
+        'geo_bypass': True,
+        'geo_bypass_country': None,
+        
+        # Tentar múltiplos clientes do YouTube
+        'youtube_include_dash_manifest': False,
+    }
+    
+    # Adicionar format apenas se não for listagem e se fornecido
+    if not listformats:
+        if format_selector:
+            opts['format'] = format_selector
+            opts['merge_output_format'] = 'mp4'
+            opts['outtmpl'] = '%(title)s.%(ext)s'
+        else:
+            opts['format'] = 'best'
+            opts['merge_output_format'] = 'mp4'
+            opts['outtmpl'] = '%(title)s.%(ext)s'
+    else:
+        opts['listformats'] = True
+    
+    return opts
+
+
 def get_format_selector(quality=None):
     """
     Retorna a string de formato baseada na qualidade selecionada.
@@ -461,28 +537,12 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             last_file_bytes = 0
             remaining_components = 1
 
-            ydl_opts = {
-                'format': format_selector,
-                'merge_output_format': 'mp4',  # Garante que o merge seja MP4
-                'outtmpl': '%(title)s.%(ext)s',
-                'quiet': False,  # Habilitar logs para ver o processo de merge
-                'no_warnings': False,  # Mostrar avisos
-                'noplaylist': True,
-                'extract_flat': False,
-                'verbose': True,  # Modo verbose para ver tudo
-                # Headers mais realistas para evitar detecção de bot
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                },
-                # Tentar usar cookies se disponíveis (pode ajudar com detecção de bot)
-                'cookiefile': None,  # Pode ser configurado via variável de ambiente se necessário
-            }
+            # Obter cookies de variável de ambiente se disponível
+            cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+            
+            # Usar configurações otimizadas para evitar detecção de bot
+            ydl_opts = get_ydl_opts_base(format_selector=format_selector, cookies_file=cookies_file, quiet=False)
+            ydl_opts['outtmpl'] = '%(title)s.%(ext)s'  # Manter outtmpl específico para este contexto
             
             # Adicionar hook de progresso se callback fornecido
             if progress_callback:
@@ -1268,9 +1328,14 @@ def download_with_metadata():
         video_filename = None
         
         # Obter informações do vídeo (sempre necessário para metadados)
+        # Obter cookies de variável de ambiente se disponível
+        cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+        
         for url in candidate_urls:
             try:
-                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+                # Usar configurações otimizadas para evitar detecção de bot
+                info_opts = get_ydl_opts_base(cookies_file=cookies_file, quiet=True)
+                with yt_dlp.YoutubeDL(info_opts) as ydl:
                     # Obter informações do vídeo
                     video_info = ydl.extract_info(url, download=False)
                     
@@ -1287,13 +1352,11 @@ def download_with_metadata():
         # Baixar o vídeo se solicitado
         if save_video:
             format_selector = get_format_selector(quality)
-            ydl_opts = {
-                'format': format_selector,
-                'merge_output_format': 'mp4',
-                'quiet': True,
-                'no_warnings': True,
-                'noplaylist': True,
-            }
+            # Obter cookies de variável de ambiente se disponível
+            cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+            
+            # Usar configurações otimizadas para evitar detecção de bot
+            ydl_opts = get_ydl_opts_base(format_selector=format_selector, cookies_file=cookies_file, quiet=True)
             
             with tempfile.TemporaryDirectory() as tmpdir:
                 ydl_opts['outtmpl'] = os.path.join(tmpdir, '%(title)s.%(ext)s')
