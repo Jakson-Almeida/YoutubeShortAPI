@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
 
 import API_BASE_URL from '../config';
 
@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }) => {
     const savedToken = localStorage.getItem('auth_token');
     if (savedToken) {
       setToken(savedToken);
+      // Verificar token em background, mas não bloquear nem remover se falhar
       verifyToken(savedToken);
     } else {
       setLoading(false);
@@ -144,6 +145,23 @@ export const AuthProvider = ({ children }) => {
     return { 'Content-Type': 'application/json' };
   };
 
+  // Sincronizar token do localStorage quando componente monta ou quando token muda
+  useEffect(() => {
+    const savedToken = localStorage.getItem('auth_token');
+    if (savedToken && savedToken !== token) {
+      setToken(savedToken);
+    }
+  }, [token]);
+
+  // Sempre verificar localStorage diretamente para garantir que não perdemos a autenticação
+  const isAuthenticated = useMemo(() => {
+    // Sempre verificar localStorage primeiro - é a fonte da verdade
+    if (typeof localStorage !== 'undefined') {
+      return !!localStorage.getItem('auth_token');
+    }
+    return !!token;
+  }, [token]);
+
   const value = {
     user,
     token,
@@ -151,7 +169,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    isAuthenticated: !!token || (typeof localStorage !== 'undefined' && !!localStorage.getItem('auth_token')),
+    isAuthenticated,
     getAuthHeaders
   };
 
