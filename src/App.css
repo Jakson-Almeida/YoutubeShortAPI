@@ -71,5 +71,23 @@
   }
 }
 
+@media (max-width: 480px) {
+  .app-header {
+    padding: 20px 15px;
+  }
+
+  .app-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .app-container {
+    padding: 0 15px;
+  }
+  
+  .loading-container {
+    padding: 40px 15px;
+  }
+}
+
 
 

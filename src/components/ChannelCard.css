@@ -145,10 +145,64 @@
 
   .channel-description {
     font-size: 0.85rem;
+    -webkit-line-clamp: 2; /* Limit description lines on mobile */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .channel-initials {
     font-size: 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .channel-card {
+    flex-direction: row; /* Horizontal layout on very small screens */
+    align-items: center;
+    padding: 10px;
+    height: auto;
+  }
+
+  .channel-thumbnail {
+    width: 60px;
+    height: 60px;
+    padding-top: 0;
+    flex-shrink: 0;
+    border-radius: 50%;
+    margin-right: 15px;
+  }
+  
+  .channel-thumbnail img, 
+  .channel-thumbnail-placeholder,
+  .channel-thumbnail-loading {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    position: static;
+    transform: none;
+    border-width: 2px;
+  }
+
+  .channel-initials {
+    font-size: 1.5rem;
+  }
+
+  .channel-info {
+    padding: 0;
+    justify-content: center;
+  }
+  
+  .channel-description {
+    display: none; /* Hide description on very small list items */
+  }
+  
+  .channel-action {
+    display: none; /* Simplified view */
+  }
+  
+  .channel-title {
+    margin-bottom: 0;
   }
 }
 

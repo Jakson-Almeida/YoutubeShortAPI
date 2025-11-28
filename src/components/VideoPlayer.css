@@ -383,8 +383,14 @@
 }
 
 @media (max-width: 768px) {
+  .video-player-overlay {
+    padding: 10px;
+    align-items: flex-start; /* Ensure top part is visible */
+  }
+
   .video-player-container {
-    margin: 10px;
+    margin: 0 auto;
+    border-radius: 12px;
   }
 
   .video-player-content {
@@ -393,9 +399,63 @@
 
   .video-player-title {
     font-size: 1.2rem;
+    margin-top: 5px;
   }
 
   .video-embed {
     margin-bottom: 15px;
+    border-radius: 8px;
+  }
+  
+  .close-button {
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    font-size: 1.2rem;
+  }
+  
+  .video-player-channel {
+    font-size: 0.9rem;
+  }
+  
+  .video-player-description {
+    font-size: 0.9rem;
+    padding: 10px;
+  }
+  
+  .progress-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .progress-details {
+    width: 100%;
+    justify-content: space-between;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .video-player-overlay {
+    padding: 0;
+    background: white; /* Full screen on very small devices */
+  }
+
+  .video-player-container {
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 100vh;
+  }
+
+  .close-button {
+    top: 5px;
+    right: 5px;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  
+  .video-embed {
+    border-radius: 0;
+    margin-top: 40px; /* Space for close button */
   }
 }
