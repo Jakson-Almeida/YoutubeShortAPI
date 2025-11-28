@@ -286,13 +286,13 @@ const VideoPlayer = ({ video, onClose }) => {
       const blob = await response.blob();
       console.log('Blob recebido, tamanho:', blob.size, 'bytes');
       
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = blobUrl;
       a.download = finalFilename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
       
       console.log('Download iniciado no navegador');
@@ -353,13 +353,13 @@ const VideoPlayer = ({ video, onClose }) => {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = blobUrl;
       a.download = `${video.snippet.title.replace(/[^a-z0-9]/gi, '_')}.mp4`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
       
       // Marcar vídeo como baixado no localStorage
