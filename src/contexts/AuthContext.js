@@ -26,61 +26,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(getInitialToken);
 
-  // Carregar token do localStorage ao montar - SEM verificação automática
-  // IMPORTANTE: Não remover o token aqui - apenas carregar
-  useEffect(() => {
-    console.log('[AuthContext] Inicializando autenticação...');
-    
-    // Garantir que o token seja carregado ANTES de setar loading como false
-    const savedToken = localStorage.getItem('auth_token');
-    
-    console.log('[AuthContext] Token no localStorage:', savedToken ? 'presente' : 'ausente');
-    
-    if (savedToken) {
-      // Carregar token no estado imediatamente (se ainda não foi carregado)
-      if (savedToken !== token) {
-        console.log('[AuthContext] Sincronizando token do localStorage para o estado');
-        setToken(savedToken);
-      }
-      // Não verificar o token automaticamente - confiar que se está no localStorage, é válido
-      // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
-      // O token JWT tem expiração longa (365 dias), então não precisamos verificar constantemente
-    } else {
-      console.log('[AuthContext] Nenhum token encontrado no localStorage');
-      // Se não há token, garantir que o estado também está null
-      if (token) {
-        console.log('[AuthContext] Removendo token do estado (não há no localStorage)');
-        setToken(null);
-      }
-    }
-    
-    // IMPORTANTE: setar loading como false DEPOIS de garantir que o token foi carregado
-    // Isso evita que componentes vejam isAuthenticated como false durante o carregamento inicial
-    console.log('[AuthContext] Finalizando carregamento inicial, loading = false');
-    setLoading(false);
-
-    // Listener para quando o token for removido externamente (ex: após 401 explícito do backend)
-    const handleTokenRemoved = () => {
-      console.log('[AuthContext] Evento auth_token_removed recebido');
-      // Só remover se realmente foi um 401 - não remover por outros motivos
-      const currentToken = localStorage.getItem('auth_token');
-      if (!currentToken) {
-        // Token já foi removido - apenas sincronizar estado
-        console.log('[AuthContext] Token já foi removido do localStorage, sincronizando estado');
-        setToken(null);
-        setUser(null);
-      } else {
-        console.log('[AuthContext] Token ainda existe no localStorage, ignorando evento (possível condição de corrida)');
-      }
-    };
-
-    window.addEventListener('auth_token_removed', handleTokenRemoved);
-
-    return () => {
-      window.removeEventListener('auth_token_removed', handleTokenRemoved);
-    };
-  }, []); // Executar apenas uma vez ao montar
-
+  // Função para verificar token - definida antes do useEffect para poder ser usada
   const verifyToken = async (authToken) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
@@ -111,16 +57,78 @@ export const AuthProvider = ({ children }) => {
         // Outros erros (rede, servidor, etc) - manter token mas não setar user
         // O token ainda pode ser válido, apenas não conseguimos verificar agora
         // NÃO REMOVER o token por erros de rede ou servidor
-        console.warn('Erro ao verificar token, mas mantendo sessão:', response.status);
+        console.warn('[AuthContext] Erro ao verificar token, mas mantendo sessão:', response.status);
         return true; // Assumir válido se não for 401
       }
     } catch (error) {
       // Erro de rede - NÃO REMOVER token, pode ser temporário
       // O token JWT é válido localmente até a expiração, não precisamos verificar constantemente
-      console.warn('Erro de conexão ao verificar token, mantendo sessão:', error);
+      console.warn('[AuthContext] Erro de conexão ao verificar token, mantendo sessão:', error);
       return true; // Assumir válido em caso de erro de rede
     }
   };
+
+  // Carregar token do localStorage ao montar e verificar se há token para carregar dados do usuário
+  useEffect(() => {
+    console.log('[AuthContext] Inicializando autenticação...');
+    
+    const initializeAuth = async () => {
+      // Garantir que o token seja carregado ANTES de setar loading como false
+      const savedToken = localStorage.getItem('auth_token');
+      
+      console.log('[AuthContext] Token no localStorage:', savedToken ? 'presente' : 'ausente');
+      
+      if (savedToken) {
+        // Carregar token no estado imediatamente
+        console.log('[AuthContext] Sincronizando token do localStorage para o estado');
+        setToken(savedToken);
+        
+        // IMPORTANTE: Verificar o token para carregar dados do usuário
+        // Isso é essencial após refresh da página - sem isso, o user fica null
+        // e o UserMenu mostra botões de login mesmo estando autenticado
+        console.log('[AuthContext] Token presente, verificando token para carregar dados do usuário...');
+        const isValid = await verifyToken(savedToken);
+        if (isValid) {
+          console.log('[AuthContext] Token verificado com sucesso, dados do usuário carregados');
+        } else {
+          console.log('[AuthContext] Token inválido ou expirado');
+        }
+      } else {
+        console.log('[AuthContext] Nenhum token encontrado no localStorage');
+        // Se não há token, garantir que o estado também está null
+        setToken(null);
+        setUser(null);
+      }
+      
+      // IMPORTANTE: setar loading como false DEPOIS de garantir que o token foi carregado
+      // Isso evita que componentes vejam isAuthenticated como false durante o carregamento inicial
+      console.log('[AuthContext] Finalizando carregamento inicial, loading = false');
+      setLoading(false);
+    };
+    
+    initializeAuth();
+
+    // Listener para quando o token for removido externamente (ex: após 401 explícito do backend)
+    const handleTokenRemoved = () => {
+      console.log('[AuthContext] Evento auth_token_removed recebido');
+      // Só remover se realmente foi um 401 - não remover por outros motivos
+      const currentToken = localStorage.getItem('auth_token');
+      if (!currentToken) {
+        // Token já foi removido - apenas sincronizar estado
+        console.log('[AuthContext] Token já foi removido do localStorage, sincronizando estado');
+        setToken(null);
+        setUser(null);
+      } else {
+        console.log('[AuthContext] Token ainda existe no localStorage, ignorando evento (possível condição de corrida)');
+      }
+    };
+
+    window.addEventListener('auth_token_removed', handleTokenRemoved);
+
+    return () => {
+      window.removeEventListener('auth_token_removed', handleTokenRemoved);
+    };
+  }, []); // Executar apenas uma vez ao montar - eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (email, password) => {
     try {
