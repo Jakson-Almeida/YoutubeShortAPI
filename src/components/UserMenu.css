@@ -180,5 +180,23 @@
   }
 }
 
+@media (max-width: 480px) {
+  .auth-buttons {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .btn-auth {
+    width: 100%;
+    text-align: center;
+    padding: 10px; /* Aumentar área de toque */
+  }
+
+  /* Ajustar alinhamento geral do menu em telas pequenas */
+  .user-menu-container {
+    align-items: stretch;
+  }
+}
+
 
 
