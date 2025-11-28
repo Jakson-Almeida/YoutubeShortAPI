@@ -13,36 +13,64 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
+  // Inicializar token diretamente do localStorage no estado inicial
+  // Isso garante que o token esteja disponível desde o primeiro render
+  const getInitialToken = () => {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem('auth_token');
+    }
+    return null;
+  };
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(null);
+  const [token, setToken] = useState(getInitialToken);
 
   // Carregar token do localStorage ao montar - SEM verificação automática
   // IMPORTANTE: Não remover o token aqui - apenas carregar
   useEffect(() => {
+    console.log('[AuthContext] Inicializando autenticação...');
+    
     // Garantir que o token seja carregado ANTES de setar loading como false
     const savedToken = localStorage.getItem('auth_token');
     
+    console.log('[AuthContext] Token no localStorage:', savedToken ? 'presente' : 'ausente');
+    
     if (savedToken) {
-      // Carregar token no estado imediatamente
-      setToken(savedToken);
+      // Carregar token no estado imediatamente (se ainda não foi carregado)
+      if (savedToken !== token) {
+        console.log('[AuthContext] Sincronizando token do localStorage para o estado');
+        setToken(savedToken);
+      }
       // Não verificar o token automaticamente - confiar que se está no localStorage, é válido
       // A verificação será feita apenas quando necessário (ex: ao fazer uma requisição)
       // O token JWT tem expiração longa (365 dias), então não precisamos verificar constantemente
+    } else {
+      console.log('[AuthContext] Nenhum token encontrado no localStorage');
+      // Se não há token, garantir que o estado também está null
+      if (token) {
+        console.log('[AuthContext] Removendo token do estado (não há no localStorage)');
+        setToken(null);
+      }
     }
     
     // IMPORTANTE: setar loading como false DEPOIS de garantir que o token foi carregado
     // Isso evita que componentes vejam isAuthenticated como false durante o carregamento inicial
+    console.log('[AuthContext] Finalizando carregamento inicial, loading = false');
     setLoading(false);
 
     // Listener para quando o token for removido externamente (ex: após 401 explícito do backend)
     const handleTokenRemoved = () => {
+      console.log('[AuthContext] Evento auth_token_removed recebido');
       // Só remover se realmente foi um 401 - não remover por outros motivos
       const currentToken = localStorage.getItem('auth_token');
       if (!currentToken) {
         // Token já foi removido - apenas sincronizar estado
+        console.log('[AuthContext] Token já foi removido do localStorage, sincronizando estado');
         setToken(null);
         setUser(null);
+      } else {
+        console.log('[AuthContext] Token ainda existe no localStorage, ignorando evento (possível condição de corrida)');
       }
     };
 
@@ -96,6 +124,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
+      console.log('[AuthContext] Iniciando login para:', email);
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -107,21 +136,25 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
 
       if (response.ok) {
+        console.log('[AuthContext] Login bem-sucedido, salvando token no localStorage e estado');
         setToken(data.access_token);
         setUser(data.user);
         localStorage.setItem('auth_token', data.access_token);
+        console.log('[AuthContext] Token salvo com sucesso');
         return { success: true };
       } else {
+        console.log('[AuthContext] Login falhou:', data.error);
         return { success: false, error: data.error || 'Erro ao fazer login' };
       }
     } catch (error) {
-      console.error('Erro ao fazer login:', error);
+      console.error('[AuthContext] Erro ao fazer login:', error);
       return { success: false, error: 'Erro de conexão. Tente novamente.' };
     }
   };
 
   const register = async (email, password) => {
     try {
+      console.log('[AuthContext] Iniciando registro para:', email);
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
@@ -133,21 +166,25 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
 
       if (response.ok) {
+        console.log('[AuthContext] Registro bem-sucedido, salvando token no localStorage e estado');
         setToken(data.access_token);
         setUser(data.user);
         localStorage.setItem('auth_token', data.access_token);
+        console.log('[AuthContext] Token salvo com sucesso');
         return { success: true };
       } else {
+        console.log('[AuthContext] Registro falhou:', data.error);
         return { success: false, error: data.error || 'Erro ao registrar' };
       }
     } catch (error) {
-      console.error('Erro ao registrar:', error);
+      console.error('[AuthContext] Erro ao registrar:', error);
       return { success: false, error: 'Erro de conexão. Tente novamente.' };
     }
   };
 
   const logout = async () => {
     try {
+      console.log('[AuthContext] Iniciando logout');
       if (token) {
         await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
@@ -158,11 +195,13 @@ export const AuthProvider = ({ children }) => {
         });
       }
     } catch (error) {
-      console.error('Erro ao fazer logout:', error);
+      console.error('[AuthContext] Erro ao fazer logout:', error);
     } finally {
+      console.log('[AuthContext] Removendo token do localStorage e estado');
       setToken(null);
       setUser(null);
       localStorage.removeItem('auth_token');
+      console.log('[AuthContext] Logout concluído');
     }
   };
 
@@ -182,14 +221,25 @@ export const AuthProvider = ({ children }) => {
   // MAS: NUNCA remover o token do localStorage - apenas sincronizar o estado React
   useEffect(() => {
     // Não executar durante o carregamento inicial
-    if (loading) return;
+    if (loading) {
+      console.log('[AuthContext] Sincronização: pulando durante loading inicial');
+      return;
+    }
     
     const savedToken = localStorage.getItem('auth_token');
     
     // Se há token no localStorage mas não no estado - sincronizar imediatamente
     // Isso é especialmente importante após recarregar a página
     if (savedToken && savedToken !== token) {
+      console.log('[AuthContext] Sincronização: token no localStorage mas não no estado, sincronizando...');
       setToken(savedToken);
+    } else if (!savedToken && token) {
+      // Se não há token no localStorage mas há no estado, isso é um problema
+      // Mas NÃO vamos remover o token do estado aqui - pode ser uma condição de corrida
+      // O token só será removido quando:
+      // 1. O usuário faz logout explicitamente
+      // 2. O backend retorna 401 (token inválido)
+      console.warn('[AuthContext] Sincronização: token no estado mas não no localStorage - possível condição de corrida, mantendo estado');
     }
     
     // IMPORTANTE: NÃO remover o token do localStorage aqui
@@ -207,7 +257,9 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = useMemo(() => {
     if (typeof localStorage === 'undefined') {
       // Fallback: usar estado do token se localStorage não estiver disponível (SSR)
-      return !!token;
+      const result = !!token;
+      console.log('[AuthContext] isAuthenticated (SSR fallback):', result);
+      return result;
     }
     // SEMPRE ler do localStorage - é a fonte única da verdade
     // Não depender do estado 'loading' ou 'token' - se há token no localStorage, o usuário está autenticado
@@ -216,7 +268,9 @@ export const AuthProvider = ({ children }) => {
     // 2. O backend retorna 401 EXPLICITAMENTE
     // NUNCA remover por condições de corrida ou dessincronização
     const savedToken = localStorage.getItem('auth_token');
-    return !!savedToken;
+    const result = !!savedToken;
+    console.log('[AuthContext] isAuthenticated (localStorage):', result, '| loading:', loading, '| token no estado:', !!token);
+    return result;
   }, [token, loading]); // Recalcular quando token ou loading mudar, mas sempre ler do localStorage
 
   const value = {
