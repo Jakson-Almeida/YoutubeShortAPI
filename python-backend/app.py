@@ -971,7 +971,7 @@ def download_video():
             return jsonify({
                 "error": "Falha no download",
                 "message": "Não foi possível concluir o download. Tente novamente."
-            }), 500
+            }), 503  # Mudar de 500 para 503 (Service Unavailable)
     else:
         # Mensagem genérica - não expor detalhes técnicos
         return jsonify({
@@ -983,7 +983,7 @@ def download_video():
     return jsonify({
         "error": "Erro desconhecido",
         "message": "Não foi possível processar o download"
-    }), 500
+    }), 503  # Mudar de 500 para 503 (Service Unavailable)
 
 
 # Armazenamento temporário de progresso (em produção, usar Redis ou similar)
@@ -1089,7 +1089,8 @@ def download_with_progress(video_id: str, quality: str):
                         progress_queue.put({'status': 'error', 'error': error_msg})
                 except Exception as exc:
                     app.logger.exception("Exceção na thread de download para vídeo %s", video_id)
-                    progress_queue.put({'status': 'error', 'error': str(exc)})
+                    # Mensagem genérica - não expor detalhes técnicos
+                    progress_queue.put({'status': 'error', 'error': 'Não foi possível concluir o download. Tente novamente.'})
             
             thread = threading.Thread(target=download_thread)
             thread.start()
@@ -1154,7 +1155,9 @@ def download_with_progress(video_id: str, quality: str):
             time.sleep(0.5)
             
         except Exception as exc:
-            yield f"data: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
+            app.logger.exception("Erro no download_with_progress para vídeo %s", video_id)
+            # Mensagem genérica - não expor detalhes técnicos
+            yield f"data: {json.dumps({'status': 'error', 'error': 'Não foi possível concluir o download. Tente novamente.'})}\n\n"
         finally:
             # Manter progresso por 5 minutos para download do arquivo
             pass

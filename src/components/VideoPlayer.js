@@ -232,7 +232,10 @@ const VideoPlayer = ({ video, onClose }) => {
     try {
       console.log(`Baixando arquivo: videoId=${videoId}, quality=${quality}, filename=${filename || 'não fornecido'}`);
       const headers = getAuthHeaders();
-      const response = await fetch(`${API_BASE_URL}/api/download?videoId=${videoId}&quality=${quality}`, {
+      const token = localStorage.getItem('auth_token');
+      // Garantir que o token seja enviado tanto no header quanto na query string (para fallback)
+      const url = `${API_BASE_URL}/api/download?videoId=${videoId}&quality=${quality}${token ? `&token=${token}` : ''}`;
+      const response = await fetch(url, {
         headers: headers
       });
       
@@ -249,7 +252,13 @@ const VideoPlayer = ({ video, onClose }) => {
           window.dispatchEvent(new CustomEvent('auth_token_removed'));
           return;
         }
-        throw new Error('Erro ao processar download. Tente novamente.');
+        // Para erros 500, 503, etc, não tratar como erro de autenticação
+        const errorText = await response.text();
+        console.error(`Erro no download (${response.status}):`, errorText);
+        setDownloadError('Não foi possível concluir o download. Tente novamente.');
+        setDownloading(false);
+        setDownloadProgress(null);
+        return;
       }
 
       // Obter filename do header Content-Disposition se não foi fornecido
@@ -310,7 +319,10 @@ const VideoPlayer = ({ video, onClose }) => {
   const handleDownloadFallback = async () => {
     try {
       const headers = getAuthHeaders();
-      const response = await fetch(`${API_BASE_URL}/api/download?videoId=${videoId}&quality=${selectedQuality}`, {
+      const token = localStorage.getItem('auth_token');
+      // Garantir que o token seja enviado tanto no header quanto na query string (para fallback)
+      const url = `${API_BASE_URL}/api/download?videoId=${videoId}&quality=${selectedQuality}${token ? `&token=${token}` : ''}`;
+      const response = await fetch(url, {
         headers: headers
       });
       
@@ -327,8 +339,13 @@ const VideoPlayer = ({ video, onClose }) => {
           window.dispatchEvent(new CustomEvent('auth_token_removed'));
           return;
         }
-        // Mensagem genérica - não expor detalhes técnicos
-        throw new Error('Serviço temporariamente indisponível.');
+        // Para erros 500, 503, etc, não tratar como erro de autenticação
+        const errorText = await response.text();
+        console.error(`Erro no download fallback (${response.status}):`, errorText);
+        setDownloadError('Não foi possível concluir o download. Tente novamente.');
+        setDownloading(false);
+        setDownloadProgress(null);
+        return;
       }
 
       const blob = await response.blob();
