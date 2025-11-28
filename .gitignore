@@ -30,6 +30,8 @@ __pycache__/
 python-backend/__pycache__/
 python-backend/.venv/
 python-backend/*.pyc
+python-backend/*.db
+*.db
 
 
 
