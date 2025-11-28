@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
     return () => {
       window.removeEventListener('auth_token_removed', handleTokenRemoved);
     };
-  }, []);
+  }, []); // Executar apenas uma vez ao montar
 
   const verifyToken = async (authToken) => {
     try {
@@ -179,7 +179,11 @@ export const AuthProvider = ({ children }) => {
 
   // Sincronizar token do localStorage quando detectamos dessincronização
   // IMPORTANTE: Este useEffect garante que o estado React sempre esteja sincronizado com localStorage
+  // MAS: NUNCA remover o token do localStorage - apenas sincronizar o estado React
   useEffect(() => {
+    // Não executar durante o carregamento inicial
+    if (loading) return;
+    
     const savedToken = localStorage.getItem('auth_token');
     
     // Se há token no localStorage mas não no estado - sincronizar imediatamente
@@ -188,22 +192,11 @@ export const AuthProvider = ({ children }) => {
       setToken(savedToken);
     }
     
-    // Se não há token no localStorage mas há no estado - limpar estado
-    // Mas só fazer isso se não estivermos no carregamento inicial
-    // e após confirmar que o token realmente foi removido (não é condição de corrida)
-    if (!savedToken && token && !loading) {
-      // Pequeno delay para evitar remoção acidental devido a condições de corrida
-      const timeoutId = setTimeout(() => {
-        const recheckToken = localStorage.getItem('auth_token');
-        if (!recheckToken && token) {
-          // Token realmente não existe mais no localStorage - limpar estado
-          setToken(null);
-          setUser(null);
-        }
-      }, 50);
-      
-      return () => clearTimeout(timeoutId);
-    }
+    // IMPORTANTE: NÃO remover o token do localStorage aqui
+    // O token só deve ser removido quando:
+    // 1. O usuário faz logout explicitamente
+    // 2. O backend retorna 401 (token inválido)
+    // NUNCA remover por condições de corrida ou dessincronização
   }, [token, loading]);
 
   // isAuthenticated SEMPRE verifica localStorage diretamente - é a fonte única da verdade
@@ -218,7 +211,10 @@ export const AuthProvider = ({ children }) => {
     }
     // SEMPRE ler do localStorage - é a fonte única da verdade
     // Não depender do estado 'loading' ou 'token' - se há token no localStorage, o usuário está autenticado
-    // O token só será removido quando o backend retornar 401 EXPLICITAMENTE
+    // O token só será removido quando:
+    // 1. O usuário faz logout explicitamente
+    // 2. O backend retorna 401 EXPLICITAMENTE
+    // NUNCA remover por condições de corrida ou dessincronização
     const savedToken = localStorage.getItem('auth_token');
     return !!savedToken;
   }, [token, loading]); // Recalcular quando token ou loading mudar, mas sempre ler do localStorage
