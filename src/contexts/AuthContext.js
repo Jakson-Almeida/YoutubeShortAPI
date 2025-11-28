@@ -185,7 +185,8 @@ export const AuthProvider = ({ children }) => {
 
   // isAuthenticated SEMPRE verifica localStorage diretamente - é a fonte única da verdade
   // IMPORTANTE: Mesmo durante loading, se há token no localStorage, o usuário está autenticado
-  // Usa token como dependência apenas para causar re-renderização quando login/logout acontecer
+  // Isso garante que mesmo durante o carregamento inicial ou após recarregar a página,
+  // o isAuthenticated sempre retorna o valor correto baseado no localStorage
   const isAuthenticated = useMemo(() => {
     if (typeof localStorage === 'undefined') {
       // Fallback: usar estado do token se localStorage não estiver disponível
@@ -193,18 +194,8 @@ export const AuthProvider = ({ children }) => {
     }
     // SEMPRE ler do localStorage - é a fonte única da verdade
     // Não depender do estado 'loading' ou 'token' - se há token no localStorage, o usuário está autenticado
-    // Isso garante que mesmo durante o carregamento inicial ou após recarregar a página,
-    // o isAuthenticated sempre retorna o valor correto
     const savedToken = localStorage.getItem('auth_token');
-    const authenticated = !!savedToken;
-    
-    // Se há token no localStorage mas não no estado, sincronizar (mas não durante loading inicial)
-    if (authenticated && savedToken !== token && !loading) {
-      // Usar setTimeout para evitar atualização durante renderização
-      setTimeout(() => setToken(savedToken), 0);
-    }
-    
-    return authenticated;
+    return !!savedToken;
   }, [token, loading]); // Recalcular quando token ou loading mudar, mas sempre ler do localStorage
 
   const value = {
