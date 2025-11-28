@@ -42,9 +42,24 @@ const VideoPlayer = ({ video, onClose }) => {
           if (data.formats && data.formats.length > 0) {
             setSelectedQuality(data.formats[0].format_id || 'best');
           }
+        } else {
+          // Erro ao buscar formatos - não é erro de autenticação
+          // Apenas logar e continuar (usuário ainda pode tentar download)
+          const errorData = await response.json().catch(() => ({}));
+          console.warn('Não foi possível carregar formatos:', errorData.error || 'Erro desconhecido');
+          // Definir formato padrão para permitir download mesmo sem formatos
+          setFormats([{
+            format_id: 'best',
+            quality: 'Melhor qualidade disponível'
+          }]);
         }
       } catch (error) {
         console.error('Erro ao buscar formatos:', error);
+        // Definir formato padrão em caso de erro de rede
+        setFormats([{
+          format_id: 'best',
+          quality: 'Melhor qualidade disponível'
+        }]);
       } finally {
         setLoadingFormats(false);
       }

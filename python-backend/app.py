@@ -382,10 +382,23 @@ def get_video_formats():
                 })
                 
         except Exception as exc:
-            app.logger.warning("Erro ao obter formatos (%s): %s", video_url, str(exc))
+            error_msg = str(exc)
+            app.logger.warning("Erro ao obter formatos (%s): %s", video_url, error_msg)
+            
+            # Verificar se é erro de bloqueio do YouTube
+            if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                app.logger.error("YouTube bloqueou a requisição (detecção de bot)")
+                return jsonify({
+                    "error": "YouTube bloqueou temporariamente o acesso. Tente novamente em alguns minutos.",
+                    "code": "YOUTUBE_BLOCKED"
+                }), 503
+            
             continue
     
-    return jsonify({"error": "Não foi possível obter formatos do vídeo"}), 500
+    return jsonify({
+        "error": "Não foi possível obter formatos do vídeo. O YouTube pode estar bloqueando o acesso temporariamente.",
+        "code": "FORMATS_UNAVAILABLE"
+    }), 503
 
 
 def get_format_selector(quality=None):
