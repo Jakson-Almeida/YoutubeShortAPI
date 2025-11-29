@@ -4,6 +4,8 @@ import tempfile
 from io import BytesIO
 import zipfile
 from datetime import datetime, timedelta
+import time
+import random
 
 from urllib.error import HTTPError
 
@@ -386,7 +388,7 @@ def get_video_formats():
             app.logger.warning("Erro ao obter formatos (%s): %s", video_url, error_msg)
             
             # Verificar se é erro de bloqueio do YouTube
-            if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+            if is_bot_detection_error(error_msg):
                 app.logger.error("YouTube bloqueou a requisição (detecção de bot)")
                 # Mensagem genérica - não expor detalhes técnicos
                 return jsonify({
@@ -403,7 +405,7 @@ def get_video_formats():
     }), 503
 
 
-def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, listformats=False):
+def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, listformats=False, player_client=None):
     """
     Retorna configurações base otimizadas do yt-dlp para evitar detecção de bot.
     Inclui headers realistas e opções específicas do extractor do YouTube.
@@ -413,9 +415,16 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         cookies_file: Caminho para arquivo de cookies (opcional)
         quiet: Se True, reduz output
         listformats: Se True, apenas lista formatos sem baixar
+        player_client: Lista de player_clients para tentar (None = usa padrão)
     """
     # User-Agent mais recente e realista (Chrome 131 - Janeiro 2025)
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    
+    # Player clients para tentar (em ordem de preferência)
+    if player_client is None:
+        player_client = ['android', 'web']
+    elif not isinstance(player_client, list):
+        player_client = [player_client]
     
     opts = {
         'quiet': quiet,
@@ -445,7 +454,7 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         # Opções específicas do extractor do YouTube para evitar detecção
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],  # Tentar clientes diferentes
+                'player_client': player_client,  # Tentar clientes diferentes
                 'player_skip': ['webpage'],  # Pular página web quando possível
             }
         },
@@ -477,6 +486,37 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         opts['listformats'] = True
     
     return opts
+
+
+def is_bot_detection_error(error_msg):
+    """
+    Verifica se o erro é relacionado à detecção de bot do YouTube.
+    
+    Args:
+        error_msg: Mensagem de erro a verificar
+        
+    Returns:
+        True se for erro de detecção de bot, False caso contrário
+    """
+    if not error_msg:
+        return False
+    
+    error_lower = str(error_msg).lower()
+    bot_indicators = [
+        "sign in to confirm",
+        "bot",
+        "blocked",
+        "temporarily unavailable",
+        "403 forbidden",
+        "503 service unavailable",
+        "429 too many requests",
+        "unable to extract",
+        "please sign in",
+        "verify you're not a robot",
+        "this action is not allowed",
+    ]
+    
+    return any(indicator in error_lower for indicator in bot_indicators)
 
 
 def get_format_selector(quality=None):
@@ -853,10 +893,15 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
             app.logger.debug(traceback.format_exc())
             
             # Verificar se é erro de bloqueio do YouTube (bot detection)
-            if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+            if is_bot_detection_error(error_msg):
                 app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s", video_id)
-                # Retornar erro específico para bot detection
-                return False, None, None, "YouTube bloqueou temporariamente a requisição. Tente novamente em alguns minutos."
+                # Adicionar delay aleatório antes de tentar próxima URL (3-7 segundos)
+                delay = random.uniform(3, 7)
+                app.logger.info("Aguardando %.1f segundos antes da próxima tentativa (anti-detecção)...", delay)
+                time.sleep(delay)
+                # Retornar erro específico para bot detection apenas se for a última URL
+                if video_url == candidate_urls[-1]:
+                    return False, None, None, "YouTube bloqueou temporariamente a requisição. Tente novamente em alguns minutos."
             
             continue
     
