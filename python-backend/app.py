@@ -369,11 +369,15 @@ def get_video_formats():
         f"https://youtu.be/{video_id}",
     ]
 
+    # Verificar cookies antes de tentar
+    cookies_file = get_cookies_file_path()
+    if not cookies_file:
+        app.logger.warning(
+            "⚠️  Listando formatos sem cookies - pode falhar se YouTube bloquear IP"
+        )
+
     for video_url in candidate_urls:
         try:
-            # Obter cookies de variável de ambiente se disponível
-            cookies_file = get_cookies_file_path()
-            
             # Usar configurações otimizadas para evitar detecção de bot
             ydl_opts = get_ydl_opts_base(cookies_file=cookies_file, quiet=True, listformats=True)
 
@@ -461,6 +465,14 @@ def get_video_formats():
             # Verificar se é erro de bloqueio do YouTube
             if is_bot_detection_error(error_msg):
                 app.logger.error("YouTube bloqueou a requisição (detecção de bot)")
+                
+                # Mensagem mais específica se cookies não estão configurados
+                if not cookies_file:
+                    app.logger.error(
+                        "❌ BLOQUEIO: Configure YOUTUBE_COOKIES_CONTENT no Railway. "
+                        "Veja GUIA_COOKIES.md para instruções."
+                    )
+                
                 # Mensagem genérica - não expor detalhes técnicos
                 return jsonify({
                     "error": "Serviço temporariamente indisponível. Tente novamente mais tarde.",
@@ -675,6 +687,15 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
     if not YT_DLP_AVAILABLE:
         return False, None, None, "yt-dlp não está instalado"
 
+    # Verificar se cookies estão configurados antes de tentar download
+    cookies_file = get_cookies_file_path()
+    if not cookies_file:
+        app.logger.warning(
+            "⚠️  ATENÇÃO: Nenhum cookie do YouTube configurado. "
+            "Downloads podem falhar devido a bloqueio de IP. "
+            "Configure YOUTUBE_COOKIES_CONTENT no Railway seguindo GUIA_COOKIES.md"
+        )
+
     candidate_urls = [
         f"https://www.youtube.com/watch?v={video_id}",
         f"https://www.youtube.com/shorts/{video_id}",
@@ -714,9 +735,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 last_file_bytes = 0
                 remaining_components = 1
 
-                # Obter cookies de variável de ambiente se disponível
-                cookies_file = get_cookies_file_path()
-                
+                # Obter cookies de variável de ambiente se disponível (já verificado acima)
                 # Usar configurações otimizadas para evitar detecção de bot com estratégia específica
                 ydl_opts = get_ydl_opts_base(
                     format_selector=format_selector, 
@@ -725,6 +744,12 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     player_client=player_clients,
                     strategy=strategy_name
                 )
+                
+                # Log informativo sobre uso de cookies
+                if cookies_file:
+                    app.logger.info("Usando cookies do YouTube para autenticação (arquivo: %s)", cookies_file)
+                else:
+                    app.logger.warning("⚠️  Download sem cookies - maior risco de bloqueio pelo YouTube")
                 ydl_opts['outtmpl'] = '%(title)s.%(ext)s'  # Manter outtmpl específico para este contexto
                 
                 # Adicionar hook de progresso se callback fornecido
@@ -1039,6 +1064,15 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 if is_bot_detection_error(error_msg):
                     app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s (estratégia: %s)", 
                                    video_id, strategy_name)
+                    
+                    # Se não há cookies configurados, adicionar aviso específico
+                    if not cookies_file:
+                        app.logger.error(
+                            "❌ BLOQUEIO CONFIRMADO: YouTube bloqueou requisição sem cookies. "
+                            "Configure YOUTUBE_COOKIES_CONTENT no Railway para resolver. "
+                            "Veja GUIA_COOKIES.md para instruções."
+                        )
+                    
                     # Adicionar delay aleatório antes de tentar próxima tentativa (2-5 segundos)
                     delay = random.uniform(2, 5)
                     app.logger.info("Aguardando %.1f segundos antes da próxima tentativa (anti-detecção)...", delay)
@@ -1051,7 +1085,22 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
     
     # Se chegou aqui, todas as estratégias falharam
     app.logger.error("Todas as estratégias falharam para o vídeo: %s", video_id)
-    return False, None, None, "Não foi possível processar o download. YouTube pode estar bloqueando temporariamente."
+    
+    # Mensagem de erro mais informativa baseada na presença de cookies
+    if not cookies_file:
+        error_message = (
+            "Não foi possível processar o download. "
+            "O YouTube bloqueou as requisições (IP de datacenter detectado). "
+            "SOLUÇÃO: Configure YOUTUBE_COOKIES_CONTENT no Railway seguindo GUIA_COOKIES.md"
+        )
+    else:
+        error_message = (
+            "Não foi possível processar o download. "
+            "YouTube pode estar bloqueando temporariamente. "
+            "Tente novamente em alguns minutos."
+        )
+    
+    return False, None, None, error_message
 
 
 def download_with_pytube(video_id: str):
