@@ -739,8 +739,6 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                         filename = f"{slugify(title)}.mp4"
                         
                         # Baixar o vídeo em thread para poder monitorar o progresso
-                        import time
-                        import threading
                         
                         download_complete = threading.Event()
                         download_error = [None]
@@ -1290,7 +1288,6 @@ def download_with_progress(video_id: str, quality: str):
             thread.start()
             
             # Enviar progresso enquanto download está em andamento
-            import time
             max_wait_time = 600  # 10 minutos máximo
             start_time = time.time()
             
