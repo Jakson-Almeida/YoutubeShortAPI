@@ -2,6 +2,13 @@
 
 ## 🔍 Situação Atual
 
+### 🆕 Evidências (30/11/2025)
+- Logs do Railway continuam mostrando erros:
+  - `Failed to extract any player response`
+  - `Failed to parse JSON (caused by 403 HTML / bloqueio do YouTube)`
+- Todas as estratégias (`default`, `ios`, `android`, `web`, `tv`) falharam em sequência
+- Isso confirma que o **bloqueio por IP** permanece mesmo usando o `yt-dlp` do branch `master`
+
 ### ✅ **Branch `local` (FUNCIONA)**
 - **Ambiente**: Notebook do usuário (IP residencial)
 - **Código**: Configuração básica do yt-dlp (sem headers customizados)
@@ -129,6 +136,7 @@ Mesmo que não resolva 100%, ajuda significativamente:
 3. **Implementar rate limiting** no backend
 4. **Melhorar tratamento de erros** para usuário final
 5. **Adicionar retry automático** após bloqueios
+6. **Verificar os novos logs de inicialização**: o backend agora informa se `YOUTUBE_COOKIES_CONTENT` está ausente, para facilitar o diagnóstico no Railway
 
 ## ⚠️ Importante
 
@@ -137,4 +145,6 @@ Mesmo que não resolva 100%, ajuda significativamente:
 - Alguns bloqueios ainda vão acontecer
 - Isso é normal para serviços de download
 - O importante é minimizar e tratar graciosamente
+
+
 

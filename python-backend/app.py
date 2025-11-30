@@ -42,9 +42,12 @@ with app.app_context():
 # Importações com fallback
 try:
     import yt_dlp
+    from yt_dlp.version import __version__ as YT_DLP_VERSION
     YT_DLP_AVAILABLE = True
+    app.logger.info("yt-dlp disponível (versão %s)", YT_DLP_VERSION)
 except ImportError:
     YT_DLP_AVAILABLE = False
+    YT_DLP_VERSION = None
     app.logger.warning("yt-dlp não está disponível. Instale com: pip install yt-dlp")
 
 try:
@@ -56,8 +59,33 @@ except ImportError:
     app.logger.warning("pytube não está disponível. Instale com: pip install pytube")
 
 
-# Variável global para armazenar o caminho do arquivo temporário de cookies
+# Variáveis globais relacionadas a cookies
 TEMP_COOKIE_FILE_PATH = None
+COOKIES_STATUS_LOGGED = False
+
+
+def log_cookie_status():
+    """
+    Registra nos logs se os cookies do YouTube foram configurados.
+    Executado apenas uma vez por ciclo de vida da aplicação.
+    """
+    global COOKIES_STATUS_LOGGED
+    if COOKIES_STATUS_LOGGED:
+        return
+
+    env_file_path = os.environ.get('YOUTUBE_COOKIES_FILE')
+    env_content = os.environ.get('YOUTUBE_COOKIES_CONTENT')
+
+    if env_file_path and os.path.exists(env_file_path):
+        app.logger.info("Cookies configurados via YOUTUBE_COOKIES_FILE (%s)", env_file_path)
+    elif env_content and env_content.strip():
+        app.logger.info("Cookies configurados via YOUTUBE_COOKIES_CONTENT (conteúdo inline)")
+    else:
+        app.logger.warning(
+            "Nenhum cookie do YouTube configurado. Configure YOUTUBE_COOKIES_CONTENT no Railway para reduzir bloqueios."
+        )
+
+    COOKIES_STATUS_LOGGED = True
 
 def get_cookies_file_path():
     """
@@ -66,6 +94,8 @@ def get_cookies_file_path():
     1. Variável de ambiente YOUTUBE_COOKIES_FILE (caminho do arquivo)
     2. Variável de ambiente YOUTUBE_COOKIES_CONTENT (conteúdo do arquivo) -> cria arquivo temporário
     """
+    log_cookie_status()
+
     global TEMP_COOKIE_FILE_PATH
     
     # 1. Verificar se existe caminho explícito definido
@@ -600,6 +630,8 @@ def is_bot_detection_error(error_msg):
         "please sign in",
         "verify you're not a robot",
         "this action is not allowed",
+        "failed to parse",
+        "player response",
     ]
     
     return any(indicator in error_lower for indicator in bot_indicators)
