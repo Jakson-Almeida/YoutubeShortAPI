@@ -382,7 +382,33 @@ def get_video_formats():
             ydl_opts = get_ydl_opts_base(cookies_file=cookies_file, quiet=True, listformats=True)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(video_url, download=False)
+                # Extrair informações com timeout para evitar esperas longas
+                extract_timeout = 12 if cookies_file else 8
+                
+                info_result = [None]
+                extract_error = [None]
+                
+                def extract_with_timeout():
+                    try:
+                        info_result[0] = ydl.extract_info(video_url, download=False)
+                    except Exception as e:
+                        extract_error[0] = e
+                
+                extract_thread = threading.Thread(target=extract_with_timeout, daemon=True)
+                extract_thread.start()
+                extract_thread.join(timeout=extract_timeout)
+                
+                if extract_thread.is_alive():
+                    app.logger.warning("Timeout na listagem de formatos após %d segundos", extract_timeout)
+                    raise Exception(f"Timeout ao listar formatos (limite: {extract_timeout}s)")
+                
+                if extract_error[0]:
+                    raise extract_error[0]
+                
+                if info_result[0] is None:
+                    raise Exception("Falha ao listar formatos (retorno None)")
+                
+                info = info_result[0]
                 
                 formats = []
                 seen_qualities = set()
@@ -703,24 +729,41 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
     ]
     
     # Estratégias para tentar (em ordem de preferência)
-    strategies = [
-        ('default', ['android', 'web']),
-        ('ios', ['ios']),
-        ('android', ['android']),
-        ('web', ['web']),
-        ('tv', ['tv_embedded', 'web']),
-    ]
+    # Se não há cookies, tentar menos estratégias para evitar timeout
+    if cookies_file:
+        strategies = [
+            ('default', ['android', 'web']),
+            ('ios', ['ios']),
+            ('android', ['android']),
+            ('web', ['web']),
+            ('tv', ['tv_embedded', 'web']),
+        ]
+    else:
+        # Sem cookies, tentar apenas as mais promissoras para evitar timeout
+        strategies = [
+            ('default', ['android', 'web']),
+            ('ios', ['ios']),
+            ('android', ['android']),
+        ]
+        app.logger.warning("⚠️  Modo sem cookies: limitando a 3 estratégias para evitar timeout")
     
-    # Adicionar delay inicial aleatório para parecer mais humano (0-3 segundos)
-    initial_delay = random.uniform(0, 3)
+    # Adicionar delay inicial aleatório para parecer mais humano (0-2 segundos, reduzido se sem cookies)
+    initial_delay = random.uniform(0, 2) if cookies_file else random.uniform(0, 1)
     if initial_delay > 0:
         app.logger.debug("Delay inicial aleatório: %.2f segundos (anti-detecção)", initial_delay)
         time.sleep(initial_delay)
+    
+    # Contador de falhas rápidas (para detectar bloqueio sistemático)
+    rapid_failures = 0
 
-    for strategy_name, player_clients in strategies:
-        app.logger.info("Tentando estratégia: %s com player_clients: %s", strategy_name, player_clients)
+    for strategy_idx, (strategy_name, player_clients) in enumerate(strategies):
+        app.logger.info("Tentando estratégia %d/%d: %s com player_clients: %s", 
+                       strategy_idx + 1, len(strategies), strategy_name, player_clients)
         
-        for video_url in candidate_urls:
+        # Limitar URLs tentadas se já tivemos muitas falhas rápidas
+        urls_to_try = candidate_urls[:1] if rapid_failures >= 3 else candidate_urls
+        
+        for video_url in urls_to_try:
             try:
                 app.logger.info("Tentando download com yt-dlp: %s (qualidade: %s, estratégia: %s)", 
                               video_url, quality or 'best', strategy_name)
@@ -836,8 +879,36 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     # Manter quiet=True para não interferir no comportamento padrão
                     
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        # Obter informações do vídeo primeiro
-                        info = ydl.extract_info(video_url, download=False)
+                        # Obter informações do vídeo primeiro com timeout para evitar esperas longas
+                        extract_timeout = 15  # 15 segundos para extração (reduzido se sem cookies)
+                        if not cookies_file:
+                            extract_timeout = 10  # Timeout menor quando sem cookies
+                        
+                        info_result = [None]
+                        extract_error = [None]
+                        
+                        def extract_with_timeout():
+                            try:
+                                info_result[0] = ydl.extract_info(video_url, download=False)
+                            except Exception as e:
+                                extract_error[0] = e
+                        
+                        extract_thread = threading.Thread(target=extract_with_timeout, daemon=True)
+                        extract_thread.start()
+                        extract_thread.join(timeout=extract_timeout)
+                        
+                        if extract_thread.is_alive():
+                            # Timeout atingido
+                            app.logger.warning("Timeout na extração de informações do vídeo após %d segundos", extract_timeout)
+                            raise Exception(f"Timeout ao extrair informações do vídeo (limite: {extract_timeout}s)")
+                        
+                        if extract_error[0]:
+                            raise extract_error[0]
+                        
+                        if info_result[0] is None:
+                            raise Exception("Falha ao extrair informações do vídeo (retorno None)")
+                        
+                        info = info_result[0]
 
                         requested_formats = info.get('requested_formats')
                         if isinstance(requested_formats, list) and requested_formats:
@@ -1064,21 +1135,33 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 if is_bot_detection_error(error_msg):
                     app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s (estratégia: %s)", 
                                    video_id, strategy_name)
+                    rapid_failures += 1
                     
-                    # Se não há cookies configurados, adicionar aviso específico
+                    # Se não há cookies configurados, adicionar aviso específico e reduzir tentativas
                     if not cookies_file:
                         app.logger.error(
                             "❌ BLOQUEIO CONFIRMADO: YouTube bloqueou requisição sem cookies. "
                             "Configure YOUTUBE_COOKIES_CONTENT no Railway para resolver. "
                             "Veja GUIA_COOKIES.md para instruções."
                         )
+                        # Sem cookies e bloqueio confirmado: reduzir tentativas restantes
+                        if rapid_failures >= 2:
+                            app.logger.warning("⚠️  Múltiplas falhas rápidas sem cookies. Limitando tentativas restantes.")
+                            strategies = strategies[:strategy_idx + 2]  # Limitar a mais 1 estratégia
                     
-                    # Adicionar delay aleatório antes de tentar próxima tentativa (2-5 segundos)
-                    delay = random.uniform(2, 5)
-                    app.logger.info("Aguardando %.1f segundos antes da próxima tentativa (anti-detecção)...", delay)
+                    # Delay reduzido quando sem cookies ou muitas falhas rápidas
+                    if not cookies_file or rapid_failures >= 3:
+                        delay = random.uniform(0.5, 1.5)  # Delay muito curto para evitar timeout
+                    else:
+                        delay = random.uniform(1, 3)  # Delay normal
+                    
+                    app.logger.info("Aguardando %.2f segundos antes da próxima tentativa (anti-detecção)...", delay)
                     time.sleep(delay)
                     # Continuar para próxima estratégia/URL
                     continue
+                
+                # Resetar contador se erro não é bloqueio
+                rapid_failures = max(0, rapid_failures - 1)
                 
                 # Para outros erros, também continuar tentando
                 continue
