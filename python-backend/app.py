@@ -405,7 +405,7 @@ def get_video_formats():
     }), 503
 
 
-def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, listformats=False, player_client=None):
+def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, listformats=False, player_client=None, strategy='default'):
     """
     Retorna configurações base otimizadas do yt-dlp para evitar detecção de bot.
     Inclui headers realistas e opções específicas do extractor do YouTube.
@@ -416,15 +416,28 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         quiet: Se True, reduz output
         listformats: Se True, apenas lista formatos sem baixar
         player_client: Lista de player_clients para tentar (None = usa padrão)
+        strategy: Estratégia a usar ('default', 'ios', 'android', 'web', 'tv')
     """
     # User-Agent mais recente e realista (Chrome 131 - Janeiro 2025)
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     
-    # Player clients para tentar (em ordem de preferência)
+    # Player clients baseado na estratégia
     if player_client is None:
-        player_client = ['android', 'web']
+        if strategy == 'ios':
+            player_client = ['ios']
+        elif strategy == 'android':
+            player_client = ['android']
+        elif strategy == 'web':
+            player_client = ['web']
+        elif strategy == 'tv':
+            player_client = ['tv_embedded', 'web']
+        else:  # default
+            player_client = ['android', 'web']
     elif not isinstance(player_client, list):
         player_client = [player_client]
+    
+    # Referer baseado na URL do vídeo
+    referer = 'https://www.youtube.com/'
     
     opts = {
         'quiet': quiet,
@@ -449,13 +462,15 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
             'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"Windows"',
+            'Referer': referer,
+            'Origin': 'https://www.youtube.com',
         },
         
         # Opções específicas do extractor do YouTube para evitar detecção
         'extractor_args': {
             'youtube': {
                 'player_client': player_client,  # Tentar clientes diferentes
-                'player_skip': ['webpage'],  # Pular página web quando possível
+                'player_skip': ['webpage'] if strategy != 'web' else [],  # Pular página web quando possível
             }
         },
         
@@ -470,6 +485,12 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         
         # Tentar múltiplos clientes do YouTube
         'youtube_include_dash_manifest': False,
+        
+        # Opções adicionais para evitar detecção
+        'sleep_requests': 1,  # Delay entre requisições
+        'sleep_interval': 0,  # Delay entre vídeos
+        'max_sleep_interval': 0,
+        'sleep_subtitles': 0,
     }
     
     # Adicionar format apenas se não for listagem e se fornecido
@@ -562,31 +583,56 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
         f"https://www.youtube.com/shorts/{video_id}",
         f"https://youtu.be/{video_id}",
     ]
+    
+    # Estratégias para tentar (em ordem de preferência)
+    strategies = [
+        ('default', ['android', 'web']),
+        ('ios', ['ios']),
+        ('android', ['android']),
+        ('web', ['web']),
+        ('tv', ['tv_embedded', 'web']),
+    ]
+    
+    # Adicionar delay inicial aleatório para parecer mais humano (0-3 segundos)
+    initial_delay = random.uniform(0, 3)
+    if initial_delay > 0:
+        app.logger.debug("Delay inicial aleatório: %.2f segundos (anti-detecção)", initial_delay)
+        time.sleep(initial_delay)
 
-    for video_url in candidate_urls:
-        try:
-            app.logger.info("Tentando download com yt-dlp: %s (qualidade: %s)", video_url, quality or 'best')
-            
-            # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
-            format_selector = get_format_selector(quality)
-            
-            total_expected_bytes = 0
-            total_components = 1
-            downloaded_total_bytes = 0
-            current_filename = None
-            last_file_bytes = 0
-            remaining_components = 1
+    for strategy_name, player_clients in strategies:
+        app.logger.info("Tentando estratégia: %s com player_clients: %s", strategy_name, player_clients)
+        
+        for video_url in candidate_urls:
+            try:
+                app.logger.info("Tentando download com yt-dlp: %s (qualidade: %s, estratégia: %s)", 
+                              video_url, quality or 'best', strategy_name)
+                
+                # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
+                format_selector = get_format_selector(quality)
+                
+                total_expected_bytes = 0
+                total_components = 1
+                downloaded_total_bytes = 0
+                current_filename = None
+                last_file_bytes = 0
+                remaining_components = 1
 
-            # Obter cookies de variável de ambiente se disponível
-            cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
-            
-            # Usar configurações otimizadas para evitar detecção de bot
-            ydl_opts = get_ydl_opts_base(format_selector=format_selector, cookies_file=cookies_file, quiet=False)
-            ydl_opts['outtmpl'] = '%(title)s.%(ext)s'  # Manter outtmpl específico para este contexto
-            
-            # Adicionar hook de progresso se callback fornecido
-            if progress_callback:
-                merge_started = False
+                # Obter cookies de variável de ambiente se disponível
+                cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+                
+                # Usar configurações otimizadas para evitar detecção de bot com estratégia específica
+                ydl_opts = get_ydl_opts_base(
+                    format_selector=format_selector, 
+                    cookies_file=cookies_file, 
+                    quiet=False,
+                    player_client=player_clients,
+                    strategy=strategy_name
+                )
+                ydl_opts['outtmpl'] = '%(title)s.%(ext)s'  # Manter outtmpl específico para este contexto
+                
+                # Adicionar hook de progresso se callback fornecido
+                if progress_callback:
+                    merge_started = False
                 
                 def progress_hook(d):
                     nonlocal merge_started, total_expected_bytes, downloaded_total_bytes, current_filename, last_file_bytes, remaining_components
@@ -660,252 +706,257 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 
                 ydl_opts['progress_hooks'] = [progress_hook]
 
-            buffer = BytesIO()
-            
-            # Usar yt-dlp para baixar diretamente para o buffer
-            with tempfile.TemporaryDirectory() as tmpdir:
-                ydl_opts['outtmpl'] = os.path.join(tmpdir, '%(title)s.%(ext)s')
-                # Manter quiet=True para não interferir no comportamento padrão
+                buffer = BytesIO()
                 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    # Obter informações do vídeo primeiro
-                    info = ydl.extract_info(video_url, download=False)
+                # Usar yt-dlp para baixar diretamente para o buffer
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    ydl_opts['outtmpl'] = os.path.join(tmpdir, '%(title)s.%(ext)s')
+                    # Manter quiet=True para não interferir no comportamento padrão
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        # Obter informações do vídeo primeiro
+                        info = ydl.extract_info(video_url, download=False)
 
-                    requested_formats = info.get('requested_formats')
-                    if isinstance(requested_formats, list) and requested_formats:
-                        total_components = len([f for f in requested_formats if f])
-                        remaining_components = total_components
-                        total_expected_bytes = 0
-                        for fmt in requested_formats:
-                            if not fmt:
-                                continue
-                            size = fmt.get('filesize') or fmt.get('filesize_approx')
+                        requested_formats = info.get('requested_formats')
+                        if isinstance(requested_formats, list) and requested_formats:
+                            total_components = len([f for f in requested_formats if f])
+                            remaining_components = total_components
+                            total_expected_bytes = 0
+                            for fmt in requested_formats:
+                                if not fmt:
+                                    continue
+                                size = fmt.get('filesize') or fmt.get('filesize_approx')
+                                if size:
+                                    total_expected_bytes += size
+                        else:
+                            size = info.get('filesize') or info.get('filesize_approx')
                             if size:
-                                total_expected_bytes += size
-                    else:
-                        size = info.get('filesize') or info.get('filesize_approx')
-                        if size:
-                            total_expected_bytes = size
-                        total_components = 1
-                        remaining_components = 1
+                                total_expected_bytes = size
+                            total_components = 1
+                            remaining_components = 1
 
-                    title = info.get('title', 'video')
-                    filename = f"{slugify(title)}.mp4"
-                    
-                    # Baixar o vídeo em thread para poder monitorar o progresso
-                    import time
-                    import threading
-                    
-                    download_complete = threading.Event()
-                    download_error = [None]
-                    final_mp4_files = []
-                    
-                    def download_thread_func():
-                        try:
-                            app.logger.info("Thread: Iniciando ydl.download para %s", video_url)
-                            ydl.download([video_url])
-                            app.logger.info("Thread: ydl.download retornou")
-                            download_complete.set()
-                        except Exception as e:
-                            app.logger.error("Thread: Erro durante ydl.download: %s", str(e))
-                            import traceback
-                            app.logger.error(traceback.format_exc())
-                            download_error[0] = e
-                            download_complete.set()
-                    
-                    download_thread = threading.Thread(target=download_thread_func, daemon=True)
-                    download_thread.start()
-                    app.logger.debug("Monitorando diretório temporário: %s", tmpdir)
-                    
-                    # Monitorar diretório enquanto download está rodando
-                    max_wait = 600  # 10 minutos máximo
-                    wait_start = time.time()
-                    last_log_time = 0
-                    
-                    while not download_complete.is_set() and (time.time() - wait_start) < max_wait:
-                        time.sleep(2)  # Verificar a cada 2 segundos
+                        title = info.get('title', 'video')
+                        filename = f"{slugify(title)}.mp4"
                         
-                        try:
-                            all_files = os.listdir(tmpdir)
-                            # Procurar arquivo final (.mp4 que não seja temporário)
+                        # Baixar o vídeo em thread para poder monitorar o progresso
+                        import time
+                        import threading
+                        
+                        download_complete = threading.Event()
+                        download_error = [None]
+                        final_mp4_files = []
+                        
+                        def download_thread_func():
+                            try:
+                                app.logger.info("Thread: Iniciando ydl.download para %s", video_url)
+                                ydl.download([video_url])
+                                app.logger.info("Thread: ydl.download retornou")
+                                download_complete.set()
+                            except Exception as e:
+                                app.logger.error("Thread: Erro durante ydl.download: %s", str(e))
+                                import traceback
+                                app.logger.error(traceback.format_exc())
+                                download_error[0] = e
+                                download_complete.set()
+                        
+                        download_thread = threading.Thread(target=download_thread_func, daemon=True)
+                        download_thread.start()
+                        app.logger.debug("Monitorando diretório temporário: %s", tmpdir)
+                        
+                        # Monitorar diretório enquanto download está rodando
+                        max_wait = 600  # 10 minutos máximo
+                        wait_start = time.time()
+                        last_log_time = 0
+                        
+                        while not download_complete.is_set() and (time.time() - wait_start) < max_wait:
+                            time.sleep(2)  # Verificar a cada 2 segundos
+                            
+                            try:
+                                all_files = os.listdir(tmpdir)
+                                # Procurar arquivo final (.mp4 que não seja temporário)
+                                # Excluir todos os arquivos temporários do yt-dlp (.f*.mp4, .f*.m4a)
+                                candidate_files = [
+                                    f for f in all_files 
+                                    if f.endswith('.mp4') 
+                                    and os.path.isfile(os.path.join(tmpdir, f))
+                                    and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f136.mp4, .f137.mp4, etc.
+                                ]
+                                
+                                # Priorizar arquivo final (não .temp.mp4)
+                                final_files = [f for f in candidate_files if not f.endswith('.temp.mp4')]
+                                
+                                # Se não encontrou arquivo final, verificar .temp.mp4
+                                if not final_files:
+                                    temp_files = [f for f in candidate_files if f.endswith('.temp.mp4')]
+                                    if temp_files:
+                                        temp_file = os.path.join(tmpdir, temp_files[0])
+                                        # Verificar se o arquivo temp está estável (FFmpeg terminou)
+                                        temp_size1 = os.path.getsize(temp_file)
+                                        time.sleep(2)
+                                        temp_size2 = os.path.getsize(temp_file)
+                                        if temp_size1 == temp_size2 and temp_size1 > 0:
+                                            app.logger.info("Arquivo .temp.mp4 estável encontrado: %s (%d bytes)", temp_files[0], temp_size1)
+                                            # Usar o temp como final
+                                            final_mp4_files = [temp_files[0]]
+                                            break
+                                
+                                # Se encontrar arquivo final, usar ele
+                                if final_files and not final_mp4_files:
+                                    try:
+                                        file_path = os.path.join(tmpdir, final_files[0])
+                                        if not os.path.exists(file_path):
+                                            continue  # Arquivo foi deletado, continuar monitorando
+                                        
+                                        final_mp4_files = final_files
+                                        app.logger.info("Arquivo final detectado durante download: %s", final_mp4_files[0])
+                                        
+                                        # Aguardar um pouco mais para garantir que está completo
+                                        time.sleep(3)
+                                        
+                                        # Verificar se arquivo ainda existe e está estável
+                                        if not os.path.exists(file_path):
+                                            app.logger.debug("Arquivo removido durante verificação; aguardando FFmpeg")
+                                            final_mp4_files = []  # Reset para continuar procurando
+                                            continue
+                                        
+                                        file_size = os.path.getsize(file_path)
+                                        time.sleep(2)
+                                        
+                                        # Verificar novamente se arquivo ainda existe e está estável
+                                        if not os.path.exists(file_path):
+                                            app.logger.debug("Arquivo removido durante verificação de tamanho; aguardando FFmpeg")
+                                            final_mp4_files = []  # Reset para continuar procurando
+                                            continue
+                                        
+                                        if os.path.getsize(file_path) == file_size:  # Arquivo não mudou
+                                            app.logger.info("Arquivo final estável (tamanho: %d bytes). Finalizando download.", file_size)
+                                            break
+                                    except (OSError, FileNotFoundError) as e:
+                                        app.logger.debug("Arquivo não acessível durante verificação: %s", str(e))
+                                        final_mp4_files = []  # Reset para continuar procurando
+                                        continue
+                                
+                                # Log periódico
+                                elapsed = int(time.time() - wait_start)
+                                if elapsed - last_log_time >= 10:
+                                    app.logger.debug("Monitorando download (%ds, %d arquivos temporários)", 
+                                                     elapsed, len(all_files))
+                                    last_log_time = elapsed
+                            except Exception as e:
+                                app.logger.error("Erro ao monitorar diretório: %s", str(e))
+                    
+                        # Aguardar thread terminar ou timeout
+                        if not download_complete.wait(timeout=30):
+                            app.logger.warning("Thread de download não completou em 30 segundos após arquivo detectado")
+                        
+                        if download_error[0]:
+                            raise download_error[0]
+                        
+                        app.logger.info("Download e monitoramento concluídos")
+                        
+                        # Encontrar o arquivo baixado
+                        app.logger.info("Listando arquivos finais em %s", tmpdir)
+                        all_files = os.listdir(tmpdir)
+                        app.logger.info("Todos os arquivos encontrados: %s", all_files)
+                        
+                        # Se já encontramos arquivo final durante o monitoramento, usar ele
+                        if final_mp4_files:
+                            downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
+                            if not os.path.exists(downloaded_file):
+                                app.logger.warning("Arquivo encontrado anteriormente não existe mais: %s", downloaded_file)
+                                final_mp4_files = []  # Resetar para procurar novamente
+                            else:
+                                app.logger.info("Usando arquivo final encontrado durante monitoramento: %s", downloaded_file)
+                        
+                        # Se arquivo não existe ou não foi encontrado, procurar novamente
+                        if not final_mp4_files:
+                            # Tentar encontrar agora - primeiro arquivo final, depois .temp.mp4
                             # Excluir todos os arquivos temporários do yt-dlp (.f*.mp4, .f*.m4a)
-                            candidate_files = [
+                            final_mp4_files = [
                                 f for f in all_files 
                                 if f.endswith('.mp4') 
                                 and os.path.isfile(os.path.join(tmpdir, f))
                                 and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f136.mp4, .f137.mp4, etc.
+                                and not f.endswith('.temp.mp4')  # Excluir .temp.mp4 temporariamente
                             ]
                             
-                            # Priorizar arquivo final (não .temp.mp4)
-                            final_files = [f for f in candidate_files if not f.endswith('.temp.mp4')]
-                            
-                            # Se não encontrou arquivo final, verificar .temp.mp4
-                            if not final_files:
-                                temp_files = [f for f in candidate_files if f.endswith('.temp.mp4')]
+                            # Se não encontrou arquivo final, tentar .temp.mp4
+                            if not final_mp4_files:
+                                temp_files = [
+                                    f for f in all_files 
+                                    if f.endswith('.temp.mp4') 
+                                    and os.path.isfile(os.path.join(tmpdir, f))
+                                ]
                                 if temp_files:
-                                    temp_file = os.path.join(tmpdir, temp_files[0])
-                                    # Verificar se o arquivo temp está estável (FFmpeg terminou)
-                                    temp_size1 = os.path.getsize(temp_file)
-                                    time.sleep(2)
-                                    temp_size2 = os.path.getsize(temp_file)
-                                    if temp_size1 == temp_size2 and temp_size1 > 0:
-                                        app.logger.info("Arquivo .temp.mp4 estável encontrado: %s (%d bytes)", temp_files[0], temp_size1)
-                                        # Usar o temp como final
-                                        final_mp4_files = [temp_files[0]]
-                                        break
+                                    temp_file_path = os.path.join(tmpdir, temp_files[0])
+                                    temp_size = os.path.getsize(temp_file_path)
+                                    app.logger.info("Usando arquivo .temp.mp4 como final: %s (%d bytes)", temp_files[0], temp_size)
+                                    final_mp4_files = temp_files
                             
-                            # Se encontrar arquivo final, usar ele
-                            if final_files and not final_mp4_files:
-                                try:
-                                    file_path = os.path.join(tmpdir, final_files[0])
-                                    if not os.path.exists(file_path):
-                                        continue  # Arquivo foi deletado, continuar monitorando
-                                    
-                                    final_mp4_files = final_files
-                                    app.logger.info("Arquivo final detectado durante download: %s", final_mp4_files[0])
-                                    
-                                    # Aguardar um pouco mais para garantir que está completo
-                                    time.sleep(3)
-                                    
-                                    # Verificar se arquivo ainda existe e está estável
-                                    if not os.path.exists(file_path):
-                                        app.logger.debug("Arquivo removido durante verificação; aguardando FFmpeg")
-                                        final_mp4_files = []  # Reset para continuar procurando
-                                        continue
-                                    
-                                    file_size = os.path.getsize(file_path)
-                                    time.sleep(2)
-                                    
-                                    # Verificar novamente se arquivo ainda existe e está estável
-                                    if not os.path.exists(file_path):
-                                        app.logger.debug("Arquivo removido durante verificação de tamanho; aguardando FFmpeg")
-                                        final_mp4_files = []  # Reset para continuar procurando
-                                        continue
-                                    
-                                    if os.path.getsize(file_path) == file_size:  # Arquivo não mudou
-                                        app.logger.info("Arquivo final estável (tamanho: %d bytes). Finalizando download.", file_size)
-                                        break
-                                except (OSError, FileNotFoundError) as e:
-                                    app.logger.debug("Arquivo não acessível durante verificação: %s", str(e))
-                                    final_mp4_files = []  # Reset para continuar procurando
+                            if final_mp4_files:
+                                downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
+                                app.logger.info("Arquivo final encontrado após download: %s", downloaded_file)
+                            else:
+                                # Fallback: procurar todos os arquivos de vídeo/áudio (excluindo temporários)
+                                downloaded_files = [f for f in all_files 
+                                                   if os.path.isfile(os.path.join(tmpdir, f)) 
+                                                   and f.endswith(('.mp4', '.webm', '.mkv', '.m4a'))
+                                                   and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f*.mp4, .f*.m4a
+                                                   and not f.endswith('.temp.mp4')]  # Excluir .temp.mp4 também no fallback
+                                app.logger.info("Arquivos de vídeo/áudio filtrados: %s", downloaded_files)
+                                
+                                if not downloaded_files:
+                                    app.logger.warning("Nenhum arquivo baixado encontrado em %s. Arquivos totais: %s", tmpdir, all_files)
                                     continue
-                            
-                            # Log periódico
-                            elapsed = int(time.time() - wait_start)
-                            if elapsed - last_log_time >= 10:
-                                app.logger.debug("Monitorando download (%ds, %d arquivos temporários)", 
-                                                 elapsed, len(all_files))
-                                last_log_time = elapsed
-                        except Exception as e:
-                            app.logger.error("Erro ao monitorar diretório: %s", str(e))
-                    
-                    # Aguardar thread terminar ou timeout
-                    if not download_complete.wait(timeout=30):
-                        app.logger.warning("Thread de download não completou em 30 segundos após arquivo detectado")
-                    
-                    if download_error[0]:
-                        raise download_error[0]
-                    
-                    app.logger.info("Download e monitoramento concluídos")
-                    
-                    # Encontrar o arquivo baixado
-                    app.logger.info("Listando arquivos finais em %s", tmpdir)
-                    all_files = os.listdir(tmpdir)
-                    app.logger.info("Todos os arquivos encontrados: %s", all_files)
-                    
-                    # Se já encontramos arquivo final durante o monitoramento, usar ele
-                    if final_mp4_files:
-                        downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
-                        if not os.path.exists(downloaded_file):
-                            app.logger.warning("Arquivo encontrado anteriormente não existe mais: %s", downloaded_file)
-                            final_mp4_files = []  # Resetar para procurar novamente
-                        else:
-                            app.logger.info("Usando arquivo final encontrado durante monitoramento: %s", downloaded_file)
-                    
-                    # Se arquivo não existe ou não foi encontrado, procurar novamente
-                    if not final_mp4_files:
-                        # Tentar encontrar agora - primeiro arquivo final, depois .temp.mp4
-                        # Excluir todos os arquivos temporários do yt-dlp (.f*.mp4, .f*.m4a)
-                        final_mp4_files = [
-                            f for f in all_files 
-                            if f.endswith('.mp4') 
-                            and os.path.isfile(os.path.join(tmpdir, f))
-                            and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f136.mp4, .f137.mp4, etc.
-                            and not f.endswith('.temp.mp4')  # Excluir .temp.mp4 temporariamente
-                        ]
+                                
+                                # Priorizar arquivos MP4
+                                mp4_files = [f for f in downloaded_files if f.endswith('.mp4')]
+                                downloaded_file = os.path.join(tmpdir, mp4_files[0] if mp4_files else downloaded_files[0])
+                                app.logger.info("Arquivo selecionado para leitura: %s", downloaded_file)
                         
-                        # Se não encontrou arquivo final, tentar .temp.mp4
-                        if not final_mp4_files:
-                            temp_files = [
-                                f for f in all_files 
-                                if f.endswith('.temp.mp4') 
-                                and os.path.isfile(os.path.join(tmpdir, f))
-                            ]
-                            if temp_files:
-                                temp_file_path = os.path.join(tmpdir, temp_files[0])
-                                temp_size = os.path.getsize(temp_file_path)
-                                app.logger.info("Usando arquivo .temp.mp4 como final: %s (%d bytes)", temp_files[0], temp_size)
-                                final_mp4_files = temp_files
+                        # Ler o arquivo para o buffer
+                        file_size = os.path.getsize(downloaded_file)
+                        app.logger.info("Tamanho do arquivo: %d bytes", file_size)
                         
-                        if final_mp4_files:
-                            downloaded_file = os.path.join(tmpdir, final_mp4_files[0])
-                            app.logger.info("Arquivo final encontrado após download: %s", downloaded_file)
-                        else:
-                            # Fallback: procurar todos os arquivos de vídeo/áudio (excluindo temporários)
-                            downloaded_files = [f for f in all_files 
-                                               if os.path.isfile(os.path.join(tmpdir, f)) 
-                                               and f.endswith(('.mp4', '.webm', '.mkv', '.m4a'))
-                                               and not re.search(r'\.f\d+\.(mp4|m4a)$', f)  # Excluir .f*.mp4, .f*.m4a
-                                               and not f.endswith('.temp.mp4')]  # Excluir .temp.mp4 também no fallback
-                            app.logger.info("Arquivos de vídeo/áudio filtrados: %s", downloaded_files)
-                            
-                            if not downloaded_files:
-                                app.logger.warning("Nenhum arquivo baixado encontrado em %s. Arquivos totais: %s", tmpdir, all_files)
-                                continue
-                            
-                            # Priorizar arquivos MP4
-                            mp4_files = [f for f in downloaded_files if f.endswith('.mp4')]
-                            downloaded_file = os.path.join(tmpdir, mp4_files[0] if mp4_files else downloaded_files[0])
-                            app.logger.info("Arquivo selecionado para leitura: %s", downloaded_file)
-                    
-                    # Ler o arquivo para o buffer
-                    file_size = os.path.getsize(downloaded_file)
-                    app.logger.info("Tamanho do arquivo: %d bytes", file_size)
-                    
-                    with open(downloaded_file, 'rb') as f:
-                        buffer.write(f.read())
-                    
-                    buffer.seek(0)
-                    buffer_size = buffer.getbuffer().nbytes
-                    app.logger.info("Download concluído com yt-dlp: %s (buffer: %d bytes, arquivo: %d bytes)", 
-                                  filename, buffer_size, file_size)
-                    
-                    if buffer_size == 0:
-                        app.logger.error("Buffer vazio após leitura do arquivo!")
-                        continue
+                        with open(downloaded_file, 'rb') as f:
+                            buffer.write(f.read())
                         
-                    return True, buffer, filename, None
+                        buffer.seek(0)
+                        buffer_size = buffer.getbuffer().nbytes
+                        app.logger.info("Download concluído com yt-dlp: %s (buffer: %d bytes, arquivo: %d bytes)", 
+                                      filename, buffer_size, file_size)
+                        
+                        if buffer_size == 0:
+                            app.logger.error("Buffer vazio após leitura do arquivo!")
+                            continue
+                            
+                        app.logger.info("Download bem-sucedido usando estratégia: %s", strategy_name)
+                        return True, buffer, filename, None
 
-        except Exception as exc:  # pylint: disable=broad-except
-            error_msg = str(exc)
-            app.logger.warning("Erro ao baixar com yt-dlp (%s): %s", video_url, error_msg)
-            import traceback
-            app.logger.debug(traceback.format_exc())
-            
-            # Verificar se é erro de bloqueio do YouTube (bot detection)
-            if is_bot_detection_error(error_msg):
-                app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s", video_id)
-                # Adicionar delay aleatório antes de tentar próxima URL (3-7 segundos)
-                delay = random.uniform(3, 7)
-                app.logger.info("Aguardando %.1f segundos antes da próxima tentativa (anti-detecção)...", delay)
-                time.sleep(delay)
-                # Retornar erro específico para bot detection apenas se for a última URL
-                if video_url == candidate_urls[-1]:
-                    return False, None, None, "YouTube bloqueou temporariamente a requisição. Tente novamente em alguns minutos."
-            
-            continue
+            except Exception as exc:  # pylint: disable=broad-except
+                error_msg = str(exc)
+                app.logger.warning("Erro ao baixar com yt-dlp (%s, estratégia: %s): %s", 
+                                 video_url, strategy_name, error_msg)
+                import traceback
+                app.logger.debug(traceback.format_exc())
+                
+                # Verificar se é erro de bloqueio do YouTube (bot detection)
+                if is_bot_detection_error(error_msg):
+                    app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s (estratégia: %s)", 
+                                   video_id, strategy_name)
+                    # Adicionar delay aleatório antes de tentar próxima tentativa (2-5 segundos)
+                    delay = random.uniform(2, 5)
+                    app.logger.info("Aguardando %.1f segundos antes da próxima tentativa (anti-detecção)...", delay)
+                    time.sleep(delay)
+                    # Continuar para próxima estratégia/URL
+                    continue
+                
+                # Para outros erros, também continuar tentando
+                continue
     
-    return False, None, None, "Não foi possível processar o download"
+    # Se chegou aqui, todas as estratégias falharam
+    app.logger.error("Todas as estratégias falharam para o vídeo: %s", video_id)
+    return False, None, None, "Não foi possível processar o download. YouTube pode estar bloqueando temporariamente."
 
 
 def download_with_pytube(video_id: str):
