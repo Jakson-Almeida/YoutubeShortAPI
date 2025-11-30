@@ -56,6 +56,47 @@ except ImportError:
     app.logger.warning("pytube não está disponível. Instale com: pip install pytube")
 
 
+# Variável global para armazenar o caminho do arquivo temporário de cookies
+TEMP_COOKIE_FILE_PATH = None
+
+def get_cookies_file_path():
+    """
+    Retorna o caminho para o arquivo de cookies.
+    Prioridade:
+    1. Variável de ambiente YOUTUBE_COOKIES_FILE (caminho do arquivo)
+    2. Variável de ambiente YOUTUBE_COOKIES_CONTENT (conteúdo do arquivo) -> cria arquivo temporário
+    """
+    global TEMP_COOKIE_FILE_PATH
+    
+    # 1. Verificar se existe caminho explícito definido
+    env_file_path = os.environ.get('YOUTUBE_COOKIES_FILE')
+    if env_file_path and os.path.exists(env_file_path):
+        return env_file_path
+        
+    # 2. Se já criamos um arquivo temporário anteriormente e ele existe, retornar ele
+    if TEMP_COOKIE_FILE_PATH and os.path.exists(TEMP_COOKIE_FILE_PATH):
+        return TEMP_COOKIE_FILE_PATH
+        
+    # 3. Verificar se existe conteúdo de cookies definido em variável de ambiente
+    cookies_content = os.environ.get('YOUTUBE_COOKIES_CONTENT')
+    if cookies_content:
+        try:
+            # Criar arquivo temporário
+            fd, path = tempfile.mkstemp(suffix='.txt', text=True)
+            with os.fdopen(fd, 'w') as f:
+                f.write(cookies_content)
+            
+            TEMP_COOKIE_FILE_PATH = path
+            app.logger.info("Arquivo de cookies temporário criado com sucesso a partir de YOUTUBE_COOKIES_CONTENT")
+            return path
+        except Exception as e:
+            app.logger.error("Erro ao criar arquivo de cookies temporário: %s", str(e))
+            return None
+            
+    return None
+
+
+
 def slugify(value: str) -> str:
     """
     Formata o titulo do video para ser utilizado como nome de arquivo.
@@ -301,7 +342,7 @@ def get_video_formats():
     for video_url in candidate_urls:
         try:
             # Obter cookies de variável de ambiente se disponível
-            cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+            cookies_file = get_cookies_file_path()
             
             # Usar configurações otimizadas para evitar detecção de bot
             ydl_opts = get_ydl_opts_base(cookies_file=cookies_file, quiet=True, listformats=True)
@@ -461,6 +502,9 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
     # Referer baseado na URL do vídeo
     referer = 'https://www.youtube.com/'
     
+    # Obter caminho do arquivo de cookies
+    final_cookies_file = cookies_file or get_cookies_file_path()
+    
     opts = {
         'quiet': quiet,
         'no_warnings': quiet,
@@ -494,7 +538,7 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         },
         
         # Usar cookies se disponíveis
-        'cookiefile': cookies_file if cookies_file and os.path.exists(cookies_file) else None,
+        'cookiefile': final_cookies_file if final_cookies_file and os.path.exists(final_cookies_file) else None,
         
         # Outras opções para melhorar compatibilidade
         'no_check_certificate': True,  # Alterado para True para evitar problemas de SSL em alguns ambientes
@@ -639,7 +683,7 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                 remaining_components = 1
 
                 # Obter cookies de variável de ambiente se disponível
-                cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+                cookies_file = get_cookies_file_path()
                 
                 # Usar configurações otimizadas para evitar detecção de bot com estratégia específica
                 ydl_opts = get_ydl_opts_base(
@@ -1443,7 +1487,7 @@ def download_with_metadata():
         
         # Obter informações do vídeo (sempre necessário para metadados)
         # Obter cookies de variável de ambiente se disponível
-        cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+        cookies_file = get_cookies_file_path()
         
         for url in candidate_urls:
             try:
@@ -1467,7 +1511,7 @@ def download_with_metadata():
         if save_video:
             format_selector = get_format_selector(quality)
             # Obter cookies de variável de ambiente se disponível
-            cookies_file = os.environ.get('YOUTUBE_COOKIES_FILE')
+            cookies_file = get_cookies_file_path()
             
             # Usar configurações otimizadas para evitar detecção de bot
             ydl_opts = get_ydl_opts_base(format_selector=format_selector, cookies_file=cookies_file, quiet=True)
