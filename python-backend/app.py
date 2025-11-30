@@ -419,7 +419,29 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         strategy: Estratégia a usar ('default', 'ios', 'android', 'web', 'tv')
     """
     # User-Agent mais recente e realista (Chrome 131 - Janeiro 2025)
-    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0'
+    ]
+    
+    # Selecionar User-Agent baseado na estratégia ou aleatório
+    if strategy == 'ios':
+        user_agent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1'
+        sec_ch_ua = None
+        sec_ch_ua_platform = '"iOS"'
+        sec_ch_ua_mobile = '?1'
+    elif strategy == 'android':
+        user_agent = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'
+        sec_ch_ua = '"Chrome";v="131", "Android WebView";v="131", "Not?A_Brand";v="24"'
+        sec_ch_ua_platform = '"Android"'
+        sec_ch_ua_mobile = '?1'
+    else:
+        user_agent = random.choice(user_agents)
+        sec_ch_ua = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
+        sec_ch_ua_platform = '"Windows"' if 'Windows' in user_agent else ('"macOS"' if 'Macintosh' in user_agent else '"Linux"')
+        sec_ch_ua_mobile = '?0'
     
     # Player clients baseado na estratégia
     if player_client is None:
@@ -459,9 +481,6 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'none',
             'Sec-Fetch-User': '?1',
-            'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
             'Referer': referer,
             'Origin': 'https://www.youtube.com',
         },
@@ -478,10 +497,12 @@ def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, list
         'cookiefile': cookies_file if cookies_file and os.path.exists(cookies_file) else None,
         
         # Outras opções para melhorar compatibilidade
-        'no_check_certificate': False,
+        'no_check_certificate': True,  # Alterado para True para evitar problemas de SSL em alguns ambientes
         'prefer_insecure': False,
         'geo_bypass': True,
         'geo_bypass_country': None,
+        'source_address': '0.0.0.0',  # Forçar IPv4 se possível
+        'force_ipv4': True,  # Forçar IPv4 explicitamente
         
         # Tentar múltiplos clientes do YouTube
         'youtube_include_dash_manifest': False,
