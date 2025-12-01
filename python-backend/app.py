@@ -378,37 +378,12 @@ def get_video_formats():
 
     for video_url in candidate_urls:
         try:
-            # Usar configurações otimizadas para evitar detecção de bot
+            # Usar configuração simplificada (similar à branch local)
             ydl_opts = get_ydl_opts_base(cookies_file=cookies_file, quiet=True, listformats=True)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Extrair informações com timeout para evitar esperas longas
-                extract_timeout = 12 if cookies_file else 8
-                
-                info_result = [None]
-                extract_error = [None]
-                
-                def extract_with_timeout():
-                    try:
-                        info_result[0] = ydl.extract_info(video_url, download=False)
-                    except Exception as e:
-                        extract_error[0] = e
-                
-                extract_thread = threading.Thread(target=extract_with_timeout, daemon=True)
-                extract_thread.start()
-                extract_thread.join(timeout=extract_timeout)
-                
-                if extract_thread.is_alive():
-                    app.logger.warning("Timeout na listagem de formatos após %d segundos", extract_timeout)
-                    raise Exception(f"Timeout ao listar formatos (limite: {extract_timeout}s)")
-                
-                if extract_error[0]:
-                    raise extract_error[0]
-                
-                if info_result[0] is None:
-                    raise Exception("Falha ao listar formatos (retorno None)")
-                
-                info = info_result[0]
+                # Extrair informações (abordagem simples como na branch local)
+                info = ydl.extract_info(video_url, download=False)
                 
                 formats = []
                 seen_qualities = set()
@@ -516,115 +491,33 @@ def get_video_formats():
 
 def get_ydl_opts_base(format_selector=None, cookies_file=None, quiet=False, listformats=False, player_client=None, strategy='default'):
     """
-    Retorna configurações base otimizadas do yt-dlp para evitar detecção de bot.
-    Inclui headers realistas e opções específicas do extractor do YouTube.
+    Retorna configurações base simplificadas do yt-dlp (similar à branch local).
+    Mantém suporte a cookies que é essencial para produção.
     
     Args:
         format_selector: String de formato ou None (para listagem de formatos)
         cookies_file: Caminho para arquivo de cookies (opcional)
         quiet: Se True, reduz output
         listformats: Se True, apenas lista formatos sem baixar
-        player_client: Lista de player_clients para tentar (None = usa padrão)
-        strategy: Estratégia a usar ('default', 'ios', 'android', 'web', 'tv')
+        player_client: Lista de player_clients para tentar (None = usa padrão do yt-dlp)
+        strategy: Estratégia a usar (mantido para compatibilidade, mas não usado)
     """
-    # User-Agent mais recente e realista (Chrome 131 - Janeiro 2025)
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0'
-    ]
-    
-    # Selecionar User-Agent baseado na estratégia ou aleatório
-    if strategy == 'ios':
-        user_agent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1'
-        sec_ch_ua = None
-        sec_ch_ua_platform = '"iOS"'
-        sec_ch_ua_mobile = '?1'
-    elif strategy == 'android':
-        user_agent = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'
-        sec_ch_ua = '"Chrome";v="131", "Android WebView";v="131", "Not?A_Brand";v="24"'
-        sec_ch_ua_platform = '"Android"'
-        sec_ch_ua_mobile = '?1'
-    else:
-        user_agent = random.choice(user_agents)
-        sec_ch_ua = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
-        sec_ch_ua_platform = '"Windows"' if 'Windows' in user_agent else ('"macOS"' if 'Macintosh' in user_agent else '"Linux"')
-        sec_ch_ua_mobile = '?0'
-    
-    # Player clients baseado na estratégia
-    if player_client is None:
-        if strategy == 'ios':
-            player_client = ['ios']
-        elif strategy == 'android':
-            player_client = ['android']
-        elif strategy == 'web':
-            player_client = ['web']
-        elif strategy == 'tv':
-            player_client = ['tv_embedded', 'web']
-        else:  # default
-            player_client = ['android', 'web']
-    elif not isinstance(player_client, list):
-        player_client = [player_client]
-    
-    # Referer baseado na URL do vídeo
-    referer = 'https://www.youtube.com/'
-    
     # Obter caminho do arquivo de cookies
     final_cookies_file = cookies_file or get_cookies_file_path()
     
+    # Configuração simplificada similar à branch local
     opts = {
         'quiet': quiet,
         'no_warnings': quiet,
         'noplaylist': True,
         'extract_flat': False,
         'verbose': not quiet,
-        
-        # Headers muito mais realistas para evitar detecção
-        'http_headers': {
-            'User-Agent': user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Referer': referer,
-            'Origin': 'https://www.youtube.com',
-        },
-        
-        # Opções específicas do extractor do YouTube para evitar detecção
-        'extractor_args': {
-            'youtube': {
-                'player_client': player_client,  # Tentar clientes diferentes
-                'player_skip': ['webpage'] if strategy != 'web' else [],  # Pular página web quando possível
-            }
-        },
-        
-        # Usar cookies se disponíveis
-        'cookiefile': final_cookies_file if final_cookies_file and os.path.exists(final_cookies_file) else None,
-        
-        # Outras opções para melhorar compatibilidade
-        'no_check_certificate': True,  # Alterado para True para evitar problemas de SSL em alguns ambientes
-        'prefer_insecure': False,
-        'geo_bypass': True,
-        'geo_bypass_country': None,
-        'source_address': '0.0.0.0',  # Forçar IPv4 se possível
-        'force_ipv4': True,  # Forçar IPv4 explicitamente
-        
-        # Tentar múltiplos clientes do YouTube
-        'youtube_include_dash_manifest': False,
-        
-        # Opções adicionais para evitar detecção
-        'sleep_requests': 1,  # Delay entre requisições
-        'sleep_interval': 0,  # Delay entre vídeos
-        'max_sleep_interval': 0,
-        'sleep_subtitles': 0,
     }
+    
+    # Usar cookies se disponíveis (ESSENCIAL para produção)
+    if final_cookies_file and os.path.exists(final_cookies_file):
+        opts['cookiefile'] = final_cookies_file
+        app.logger.info("Usando cookies do YouTube: %s", final_cookies_file)
     
     # Adicionar format apenas se não for listagem e se fornecido
     if not listformats:
@@ -728,72 +621,33 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
         f"https://youtu.be/{video_id}",
     ]
     
-    # Estratégias para tentar (em ordem de preferência)
-    # Se não há cookies, tentar menos estratégias para evitar timeout
-    if cookies_file:
-        strategies = [
-            ('default', ['android', 'web']),
-            ('ios', ['ios']),
-            ('android', ['android']),
-            ('web', ['web']),
-            ('tv', ['tv_embedded', 'web']),
-        ]
-    else:
-        # Sem cookies, tentar apenas as mais promissoras para evitar timeout
-        strategies = [
-            ('default', ['android', 'web']),
-            ('ios', ['ios']),
-            ('android', ['android']),
-        ]
-        app.logger.warning("⚠️  Modo sem cookies: limitando a 3 estratégias para evitar timeout")
-    
-    # Adicionar delay inicial aleatório para parecer mais humano (0-2 segundos, reduzido se sem cookies)
-    initial_delay = random.uniform(0, 2) if cookies_file else random.uniform(0, 1)
-    if initial_delay > 0:
-        app.logger.debug("Delay inicial aleatório: %.2f segundos (anti-detecção)", initial_delay)
-        time.sleep(initial_delay)
-    
-    # Contador de falhas rápidas (para detectar bloqueio sistemático)
-    rapid_failures = 0
+    # Abordagem simplificada: tentar cada URL sem estratégias complexas
+    for video_url in candidate_urls:
+        try:
+            app.logger.info("Tentando download com yt-dlp: %s (qualidade: %s)", video_url, quality or 'best')
+            
+            # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
+            format_selector = get_format_selector(quality)
+            
+            total_expected_bytes = 0
+            total_components = 1
+            downloaded_total_bytes = 0
+            current_filename = None
+            last_file_bytes = 0
+            remaining_components = 1
 
-    for strategy_idx, (strategy_name, player_clients) in enumerate(strategies):
-        app.logger.info("Tentando estratégia %d/%d: %s com player_clients: %s", 
-                       strategy_idx + 1, len(strategies), strategy_name, player_clients)
-        
-        # Limitar URLs tentadas se já tivemos muitas falhas rápidas
-        urls_to_try = candidate_urls[:1] if rapid_failures >= 3 else candidate_urls
-        
-        for video_url in urls_to_try:
-            try:
-                app.logger.info("Tentando download com yt-dlp: %s (qualidade: %s, estratégia: %s)", 
-                              video_url, quality or 'best', strategy_name)
-                
-                # Configuração do yt-dlp para baixar em formato compatível (H.264/AVC1)
-                format_selector = get_format_selector(quality)
-                
-                total_expected_bytes = 0
-                total_components = 1
-                downloaded_total_bytes = 0
-                current_filename = None
-                last_file_bytes = 0
-                remaining_components = 1
-
-                # Obter cookies de variável de ambiente se disponível (já verificado acima)
-                # Usar configurações otimizadas para evitar detecção de bot com estratégia específica
-                ydl_opts = get_ydl_opts_base(
-                    format_selector=format_selector, 
-                    cookies_file=cookies_file, 
-                    quiet=False,
-                    player_client=player_clients,
-                    strategy=strategy_name
-                )
-                
-                # Log informativo sobre uso de cookies
-                if cookies_file:
-                    app.logger.info("Usando cookies do YouTube para autenticação (arquivo: %s)", cookies_file)
-                else:
-                    app.logger.warning("⚠️  Download sem cookies - maior risco de bloqueio pelo YouTube")
-                ydl_opts['outtmpl'] = '%(title)s.%(ext)s'  # Manter outtmpl específico para este contexto
+            # Usar configuração simplificada (similar à branch local)
+            ydl_opts = get_ydl_opts_base(
+                format_selector=format_selector, 
+                cookies_file=cookies_file, 
+                quiet=False
+            )
+            
+            # Log informativo sobre uso de cookies
+            if cookies_file:
+                app.logger.info("Usando cookies do YouTube para autenticação (arquivo: %s)", cookies_file)
+            else:
+                app.logger.warning("⚠️  Download sem cookies - maior risco de bloqueio pelo YouTube")
                 
                 # Adicionar hook de progresso se callback fornecido
                 if progress_callback:
@@ -879,36 +733,8 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                     # Manter quiet=True para não interferir no comportamento padrão
                     
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        # Obter informações do vídeo primeiro com timeout para evitar esperas longas
-                        extract_timeout = 15  # 15 segundos para extração (reduzido se sem cookies)
-                        if not cookies_file:
-                            extract_timeout = 10  # Timeout menor quando sem cookies
-                        
-                        info_result = [None]
-                        extract_error = [None]
-                        
-                        def extract_with_timeout():
-                            try:
-                                info_result[0] = ydl.extract_info(video_url, download=False)
-                            except Exception as e:
-                                extract_error[0] = e
-                        
-                        extract_thread = threading.Thread(target=extract_with_timeout, daemon=True)
-                        extract_thread.start()
-                        extract_thread.join(timeout=extract_timeout)
-                        
-                        if extract_thread.is_alive():
-                            # Timeout atingido
-                            app.logger.warning("Timeout na extração de informações do vídeo após %d segundos", extract_timeout)
-                            raise Exception(f"Timeout ao extrair informações do vídeo (limite: {extract_timeout}s)")
-                        
-                        if extract_error[0]:
-                            raise extract_error[0]
-                        
-                        if info_result[0] is None:
-                            raise Exception("Falha ao extrair informações do vídeo (retorno None)")
-                        
-                        info = info_result[0]
+                        # Obter informações do vídeo primeiro (abordagem simples como na branch local)
+                        info = ydl.extract_info(video_url, download=False)
 
                         requested_formats = info.get('requested_formats')
                         if isinstance(requested_formats, list) and requested_formats:
@@ -1121,53 +947,35 @@ def download_with_ytdlp(video_id: str, quality=None, progress_callback=None):
                             app.logger.error("Buffer vazio após leitura do arquivo!")
                             continue
                             
-                        app.logger.info("Download bem-sucedido usando estratégia: %s", strategy_name)
+                        app.logger.info("Download bem-sucedido com yt-dlp: %s", filename)
                         return True, buffer, filename, None
 
-            except Exception as exc:  # pylint: disable=broad-except
-                error_msg = str(exc)
-                app.logger.warning("Erro ao baixar com yt-dlp (%s, estratégia: %s): %s", 
-                                 video_url, strategy_name, error_msg)
-                import traceback
-                app.logger.debug(traceback.format_exc())
+        except Exception as exc:  # pylint: disable=broad-except
+            error_msg = str(exc)
+            app.logger.warning("Erro ao baixar com yt-dlp (%s): %s", video_url, error_msg)
+            import traceback
+            app.logger.debug(traceback.format_exc())
+            
+            # Verificar se é erro de bloqueio do YouTube (bot detection)
+            if is_bot_detection_error(error_msg):
+                app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s", video_id)
                 
-                # Verificar se é erro de bloqueio do YouTube (bot detection)
-                if is_bot_detection_error(error_msg):
-                    app.logger.error("YouTube bloqueou a requisição (detecção de bot) para vídeo: %s (estratégia: %s)", 
-                                   video_id, strategy_name)
-                    rapid_failures += 1
-                    
-                    # Se não há cookies configurados, adicionar aviso específico e reduzir tentativas
-                    if not cookies_file:
-                        app.logger.error(
-                            "❌ BLOQUEIO CONFIRMADO: YouTube bloqueou requisição sem cookies. "
-                            "Configure YOUTUBE_COOKIES_CONTENT no Railway para resolver. "
-                            "Veja GUIA_COOKIES.md para instruções."
-                        )
-                        # Sem cookies e bloqueio confirmado: reduzir tentativas restantes
-                        if rapid_failures >= 2:
-                            app.logger.warning("⚠️  Múltiplas falhas rápidas sem cookies. Limitando tentativas restantes.")
-                            strategies = strategies[:strategy_idx + 2]  # Limitar a mais 1 estratégia
-                    
-                    # Delay reduzido quando sem cookies ou muitas falhas rápidas
-                    if not cookies_file or rapid_failures >= 3:
-                        delay = random.uniform(0.5, 1.5)  # Delay muito curto para evitar timeout
-                    else:
-                        delay = random.uniform(1, 3)  # Delay normal
-                    
-                    app.logger.info("Aguardando %.2f segundos antes da próxima tentativa (anti-detecção)...", delay)
-                    time.sleep(delay)
-                    # Continuar para próxima estratégia/URL
-                    continue
+                # Se não há cookies configurados, adicionar aviso específico
+                if not cookies_file:
+                    app.logger.error(
+                        "❌ BLOQUEIO CONFIRMADO: YouTube bloqueou requisição sem cookies. "
+                        "Configure YOUTUBE_COOKIES_CONTENT no Railway para resolver. "
+                        "Veja GUIA_COOKIES.md para instruções."
+                    )
                 
-                # Resetar contador se erro não é bloqueio
-                rapid_failures = max(0, rapid_failures - 1)
-                
-                # Para outros erros, também continuar tentando
+                # Continuar para próxima URL
                 continue
+            
+            # Para outros erros, também continuar tentando
+            continue
     
-    # Se chegou aqui, todas as estratégias falharam
-    app.logger.error("Todas as estratégias falharam para o vídeo: %s", video_id)
+    # Se chegou aqui, todas as URLs falharam
+    app.logger.error("Todas as URLs falharam para o vídeo: %s", video_id)
     
     # Mensagem de erro mais informativa baseada na presença de cookies
     if not cookies_file:
