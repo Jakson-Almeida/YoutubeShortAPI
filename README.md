@@ -1,211 +1,80 @@
 # YouTube Shorts Downloader 🎬
 
-Um website simples e moderno desenvolvido em React para pesquisar, visualizar e baixar vídeos do YouTube Shorts.
+Aplicação web para pesquisar, visualizar e baixar vídeos do YouTube Shorts.
 
 ## 🚀 Funcionalidades
 
-- 🔍 **Busca de vídeos**: Pesquise vídeos do YouTube Shorts usando a YouTube Data API v3
-- 👀 **Visualização**: Assista aos vídeos diretamente no site com player incorporado
-- ⬇️ **Download**: Baixe os vídeos que você encontrar (requer configuração adicional)
+- 🔍 Busca de vídeos do YouTube Shorts
+- 👀 Visualização com player incorporado
+- ⬇️ Download de vídeos em múltiplas qualidades
+- 👤 Sistema de autenticação e histórico de downloads
 
-## 📋 Pré-requisitos
+## 🏗️ Arquitetura
 
-- Node.js (versão 14 ou superior)
-- npm ou yarn
-- Chave de API do YouTube (Google Cloud Console)
-- Python 3.8 ou superior (para o backend de download em Python)
+- **Frontend**: React (Vercel)
+- **Backend**: Python Flask (Railway)
+- **Download**: yt-dlp (prioritário) + pytube (fallback)
 
-## 🛠️ Instalação
+## ⚙️ Configuração de Produção
 
-1. **Clone o repositório**:
+### Variáveis de Ambiente
+
+#### Frontend (Vercel)
+- `REACT_APP_YOUTUBE_API_KEY` - Chave da YouTube Data API v3
+- `REACT_APP_API_URL` - URL do backend (ex: `https://seu-backend.railway.app`)
+
+#### Backend (Railway)
+- `YOUTUBE_COOKIES_CONTENT` - Cookies do YouTube (Netscape format) - **ESSENCIAL para downloads**
+- `JWT_SECRET_KEY` - Chave secreta para JWT
+- `DATABASE_URL` - URL do banco de dados (PostgreSQL recomendado)
+
+### Configuração de Cookies
+
+Para evitar bloqueios do YouTube, configure cookies:
+
+1. Exporte cookies do navegador usando extensão "Get cookies.txt LOCALLY"
+2. Configure `YOUTUBE_COOKIES_CONTENT` no Railway com o conteúdo completo do arquivo
+3. Veja [GUIA_COOKIES.md](GUIA_COOKIES.md) para instruções detalhadas
+
+## 📦 Deploy
+
+### Backend (Railway)
+1. Conecte o repositório ao Railway
+2. Configure as variáveis de ambiente
+3. O deploy é automático via `Procfile`
+
+### Frontend (Vercel)
+1. Conecte o repositório ao Vercel
+2. Configure as variáveis de ambiente
+3. O build é automático via `vercel.json`
+
+## 🛠️ Desenvolvimento Local
+
 ```bash
-git clone https://github.com/Jakson-Almeida/YoutubeShortAPI.git
-cd YoutubeShortAPI
-```
-
-2. **Instale as dependências**:
-```bash
+# Frontend
 npm install
-```
-
-3. **Configure a API Key do YouTube**:
-
-   - Acesse o [Google Cloud Console](https://console.cloud.google.com/)
-   - Crie um novo projeto ou selecione um existente
-   - Ative a **YouTube Data API v3**
-   - Crie credenciais (Chave de API)
-   - Copie sua chave de API
-
-4. **Crie um arquivo `.env` na raiz do projeto**:
-```env
-REACT_APP_YOUTUBE_API_KEY=sua_chave_de_api_aqui
-```
-
-## 🎯 Como Usar
-
-1. **Inicie o servidor de desenvolvimento**:
-```bash
 npm start
+
+# Backend
+cd python-backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
 ```
 
-2. **Acesse o aplicativo**:
-   - Abra seu navegador em `http://localhost:3000`
+## 📚 Documentação
 
-3. **Pesquise vídeos**:
-   - Digite um termo de busca na barra de pesquisa
-   - Clique no botão de busca ou pressione Enter
-   - Os resultados aparecerão abaixo
+- [GUIA_COOKIES.md](GUIA_COOKIES.md) - Configuração de cookies
+- [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Checklist de deploy
+- [QUICK_START.md](QUICK_START.md) - Guia rápido de instalação
 
-4. **Visualize um vídeo**:
-   - Clique em qualquer card de vídeo
-   - O player será aberto em uma modal
+## ⚠️ Importante
 
-## 🔧 Backend Python para Downloads
-
-Para habilitar downloads funcionais, foi adicionado um backend em Python que utiliza **yt-dlp** (prioritário) e **pytube** (fallback):
-
-### 🎯 Métodos de Download (em ordem de prioridade):
-
-1. **yt-dlp** (PRIMEIRA PRIORIDADE) - Mais confiável e atualizado, com suporte a +1.800 sites
-2. **pytube** (FALLBACK) - Usado automaticamente se yt-dlp falhar
-
-### 📦 Instalação:
-  
-1. **Crie e ative o ambiente virtual**:
-
-   **No Windows (PowerShell):**
-   ```powershell
-   cd python-backend
-   # Crie o ambiente virtual (se ainda não foi criado)
-   python -m venv .venv
-   
-   # Ative o ambiente virtual
-   .\.venv\Scripts\Activate.ps1
-   ```
-   
-   ⚠️ **Se você receber um erro de política de execução no PowerShell**, execute este comando como Administrador primeiro:
-   ```powershell
-   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-   ```
-   
-   Depois, tente ativar novamente o ambiente virtual.
-   
-   **Alternativa no Windows (CMD):**
-   ```cmd
-   cd python-backend
-   python -m venv .venv
-   .venv\Scripts\activate.bat
-   ```
-   
-   **No macOS/Linux:**
-   ```bash
-   cd python-backend
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-   
-   **Verificação**: Após ativar, você verá `(.venv)` no início do seu prompt de comando.
-
-2. **Instale as dependências**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Inicie o backend**:
-   ```bash
-   python app.py
-   ```
-   
-   O servidor iniciará na porta `5000`. Você verá uma mensagem como:
-   ```
-   * Running on http://127.0.0.1:5000
-   ```
-   
-   O frontend já está configurado para apontar para esse backend através da propriedade `proxy` em `package.json`.
-
-### 🔧 Troubleshooting (Windows):
-
-**Problema: "source" não é reconhecido**
-- ❌ **Errado**: `source .venv/bin/activate` (comando Linux/Mac)
-- ✅ **Correto (PowerShell)**: `.\.venv\Scripts\Activate.ps1`
-- ✅ **Correto (CMD)**: `.venv\Scripts\activate.bat`
-
-**Problema: "A execução de scripts está desabilitada neste sistema"**
-- Execute o PowerShell como **Administrador** e rode:
-  ```powershell
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-  ```
-- Ou use o CMD (Prompt de Comando) em vez do PowerShell:
-  ```cmd
-  .venv\Scripts\activate.bat
-  ```
-
-**Problema: "python não é reconhecido"**
-- Certifique-se de que o Python está instalado e adicionado ao PATH
-- Tente usar `py` em vez de `python`: `py -m venv .venv`
-
-**Verificar se o ambiente virtual está ativo:**
-- Você deve ver `(.venv)` no início do seu prompt
-- Execute `where python` (Windows) para verificar se aponta para o ambiente virtual
-
-### 📚 Documentação Adicional:
-
-- Veja `python-backend/INSTALL_YTDLP.md` para instruções detalhadas sobre o yt-dlp
-- Para melhor qualidade de vídeo, instale o **ffmpeg** (veja o guia de instalação)
-
-⚠️ **Importante**:
-- O yt-dlp é atualizado frequentemente para acompanhar mudanças do YouTube
-- Para produção, considere adicionar autenticação, cache e rate limiting
-- O download de vídeos pode violar os Termos de Serviço do YouTube
-
-## 📁 Estrutura do Projeto
-
-```
-YoutubeShortAPI/
-├── public/
-│   └── index.html
-├── python-backend/            # Backend em Python (Flask + pytube)
-│   ├── app.py
-│   └── requirements.txt
-├── server/                    # Backend Node (legado/opcional)
-├── src/
-│   ├── components/
-│   │   ├── SearchBar.js
-│   │   ├── SearchBar.css
-│   │   ├── VideoList.js
-│   │   ├── VideoList.css
-│   │   ├── VideoCard.js
-│   │   ├── VideoCard.css
-│   │   ├── VideoPlayer.js
-│   │   └── VideoPlayer.css
-│   ├── App.js
-│   ├── App.css
-│   ├── index.js
-│   └── index.css
-├── package.json
-├── .gitignore
-└── README.md
-```
-
-## 🔧 Tecnologias Utilizadas
-
-- **React** - Biblioteca JavaScript para construção de interfaces
-- **YouTube Data API v3** - API oficial do Google para buscar vídeos do YouTube
-- **CSS3** - Estilização moderna com gradientes e animações
-- **Axios** - Cliente HTTP para requisições (pode ser usado para futuras melhorias)
-
-## ⚠️ Notas Importantes
-
-1. **Limites da API**: A YouTube Data API v3 tem limites de quota. Tenha cuidado com o número de requisições.
-
-2. **Download de Vídeos**: 
-   - O download de vídeos do YouTube pode violar os Termos de Serviço do YouTube
-   - Utilize o backend em `python-backend/` (Flask + pytube) ou outro serviço de terceiros
-   - O frontend oferece links para serviços online alternativos caso o backend não esteja disponível
-
-3. **Filtro de Shorts**: O código filtra vídeos por duração curta, mas isso não garante 100% que sejam Shorts. Você pode melhorar isso usando filtros adicionais da API.
+- Downloads podem violar os Termos de Serviço do YouTube
+- Configure cookies para reduzir bloqueios em produção
+- YouTube Data API v3 tem limites de quota
 
 ---
 
-Desenvolvido com ❤️ usando React
-
+Desenvolvido com ❤️ usando React e Python
